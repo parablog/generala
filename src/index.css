@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-paper: #faf6ec;
+}
+
+html {
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overscroll-behavior-y: none; /* no pull-to-refresh mid-game */
+}
+
+button, td, th {
+  touch-action: manipulation; /* no double-tap zoom */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@keyframes party {
+  0%, 100% { transform: scale(1) rotate(-6deg); }
+  50% { transform: scale(1.25) rotate(6deg); }
+}
+.animate-party {
+  animation: party 0.8s ease-in-out infinite;
+}
