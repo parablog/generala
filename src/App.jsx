@@ -59,13 +59,20 @@ export default function App() {
     }
   }
 
+  const abandon = () => {
+    localStorage.removeItem('generala-game')
+    setGame(null)
+    setUndo(null)
+    setScreen('home')
+  }
+
   const doUndo = () => {
     setGame(undo)
     save('generala-game', undo)
     setUndo(null)
   }
 
-  const props = { game, setScreen, startGame, dark, setDark, undo, doUndo, cell, setCell, score }
+  const props = { game, setScreen, startGame, dark, setDark, undo, doUndo, cell, setCell, score, abandon }
   return (
     <div className="min-h-dvh bg-paper text-stone-800 dark:bg-slate-900 dark:text-slate-100">
       {screen === 'home' && <Home {...props} />}
@@ -76,6 +83,24 @@ export default function App() {
     </div>
   )
 }
+
+// mini version of the app icon: amber die with white pips
+const PIPS = {
+  1: [[12, 12]],
+  2: [[7, 7], [17, 17]],
+  3: [[7, 7], [12, 12], [17, 17]],
+  4: [[7, 7], [17, 7], [7, 17], [17, 17]],
+  5: [[7, 7], [17, 7], [12, 12], [7, 17], [17, 17]],
+  6: [[7, 7], [17, 7], [7, 12], [17, 12], [7, 17], [17, 17]],
+}
+const Die = ({ face }) => (
+  <svg viewBox="0 0 24 24" className="mr-1.5 inline size-5 align-[-4px]">
+    <rect width="24" height="24" rx="6" className="fill-amber-500" />
+    {PIPS[face].map(([x, y], i) => (
+      <circle key={i} cx={x} cy={y} r="2.4" className="fill-white" />
+    ))}
+  </svg>
+)
 
 const DarkToggle = ({ dark, setDark }) => (
   <button className="text-2xl" onClick={() => setDark(!dark)} aria-label="Modo oscuro">
@@ -154,12 +179,13 @@ function Setup({ setScreen, startGame }) {
   )
 }
 
-function Game({ game, setScreen, dark, setDark, undo, doUndo, cell, setCell, score }) {
+function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon }) {
   const cur = currentPlayer(game)
+  const [asking, setAsking] = useState(false)
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <button className="text-xl" onClick={() => setScreen('home')} aria-label="Inicio">🏠</button>
+        <button className="text-xl" onClick={() => setAsking(true)} aria-label="Abandonar">🏠</button>
         <span className="font-bold">
           Turno: <span className="text-amber-600 dark:text-amber-400">{game.players[cur]}</span>
         </span>
@@ -189,6 +215,7 @@ function Game({ game, setScreen, dark, setDark, undo, doUndo, cell, setCell, sco
             {CATS.map((cat) => (
               <tr key={cat.id}>
                 <td className="sticky left-0 z-10 border-t border-stone-200 bg-paper px-2 py-3 font-medium whitespace-nowrap dark:border-slate-700 dark:bg-slate-900">
+                  {cat.face && <Die face={cat.face} />}
                   {cat.label}
                 </td>
                 {game.players.map((_, i) => {
@@ -236,20 +263,37 @@ function Game({ game, setScreen, dark, setDark, undo, doUndo, cell, setCell, sco
       </div>
 
       {cell && <ScoreSheet cell={cell} onClose={() => setCell(null)} onScore={score} playerName={game.players[cell.pIdx]} />}
+
+      {asking && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={() => setAsking(false)}>
+          <div
+            className="w-full rounded-t-2xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] dark:bg-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-4 text-lg font-bold">¿Abandonar la partida?</h3>
+            <div className="flex flex-col gap-2">
+              <button className={`${btn} bg-red-600 text-white`} onClick={abandon}>
+                Abandonar
+              </button>
+              <button className={secondary} onClick={() => setAsking(false)}>
+                Seguir jugando
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function ScoreSheet({ cell, onClose, onScore, playerName }) {
-  const [pending, setPending] = useState(null)
   const { cat } = cell
+  // ponytail: no confirm step — one tap scores, undo covers mistakes
   const opt = (label, entry, key) => (
     <button
       key={key ?? label}
-      className={`${btn} ${JSON.stringify(pending) === JSON.stringify(entry)
-        ? 'bg-amber-500 text-white'
-        : 'bg-stone-100 dark:bg-slate-700'}`}
-      onClick={() => setPending(entry)}
+      className={`${btn} bg-stone-100 dark:bg-slate-700`}
+      onClick={() => onScore(entry)}
     >
       {label}
     </button>
@@ -274,16 +318,7 @@ function ScoreSheet({ cell, onClose, onScore, playerName }) {
                 : [opt(`${cat.label} (${cat.pts})`, { pts: cat.pts })]}
           {opt('Tachar ✗', { pts: 0, tachado: true })}
         </div>
-        <div className="flex gap-2">
-          <button className={`${secondary} flex-1`} onClick={onClose}>Cancelar</button>
-          <button
-            className={`${primary} flex-1 disabled:opacity-40`}
-            disabled={!pending}
-            onClick={() => onScore(pending)}
-          >
-            Confirmar
-          </button>
-        </div>
+        <button className={`${secondary} w-full`} onClick={onClose}>Cancelar</button>
       </div>
     </div>
   )
