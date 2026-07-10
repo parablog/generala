@@ -102,6 +102,14 @@ const Die = ({ face }) => (
   </svg>
 )
 
+// tachado marker, same style family as Die
+const Cross = () => (
+  <svg viewBox="0 0 24 24" className="inline size-5 align-[-4px]" aria-label="Tachado">
+    <rect width="24" height="24" rx="6" className="fill-stone-300 dark:fill-slate-600" />
+    <path d="M8 8l8 8M16 8l-8 8" className="stroke-white" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+)
+
 const DarkToggle = ({ dark, setDark }) => (
   <button className="text-2xl" onClick={() => setDark(!dark)} aria-label="Modo oscuro">
     {dark ? '☀️' : '🌙'}
@@ -231,7 +239,7 @@ function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon
                     >
                       {e ? (
                         e.tachado ? (
-                          <span className="text-stone-400 line-through">0</span>
+                          <Cross />
                         ) : (
                           <span className="font-semibold">
                             {e.pts}
