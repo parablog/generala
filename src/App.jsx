@@ -220,13 +220,14 @@ function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon
                 </td>
                 {game.players.map((_, i) => {
                   const e = game.scores[i][cat.id]
+                  // locked = can't score the 100, but tachar is always allowed
                   const locked = cat.id === 'doble' && !dobleUnlocked(game.scores[i])
-                  const tappable = !e && i === cur && !locked
+                  const tappable = !e && i === cur
                   return (
                     <td
                       key={i}
                       className={`border-t border-stone-200 px-2 py-3 text-center dark:border-slate-700 ${i === cur ? 'bg-amber-100 dark:bg-amber-500/10' : ''} ${locked ? 'opacity-30' : ''}`}
-                      onClick={() => tappable && setCell({ pIdx: i, cat })}
+                      onClick={() => tappable && setCell({ pIdx: i, cat, locked })}
                     >
                       {e ? (
                         e.tachado ? (
@@ -315,7 +316,9 @@ function ScoreSheet({ cell, onClose, onScore, playerName }) {
               ? [opt('Generala (50)', { pts: 50 }), opt('¡Servida! — Gana el juego 🏆', { pts: 50, servida: true })]
               : cat.servida
                 ? [opt(`Normal (${cat.pts})`, { pts: cat.pts }), opt(`Servida (${cat.servida}) ★`, { pts: cat.servida, servida: true })]
-                : [opt(`${cat.label} (${cat.pts})`, { pts: cat.pts })]}
+                : cell.locked
+                  ? [] // doble still locked: tachar only
+                  : [opt(`${cat.label} (${cat.pts})`, { pts: cat.pts })]}
           {opt('Tachar ✗', { pts: 0, tachado: true })}
         </div>
         <button className={`${secondary} w-full`} onClick={onClose}>Cancelar</button>
