@@ -165,6 +165,7 @@ function Setup({ setScreen, startGame }) {
         <input
           className="min-w-0 flex-1 rounded-xl border border-stone-300 bg-white px-4 py-3 dark:border-slate-600 dark:bg-slate-800"
           placeholder="Nombre"
+          maxLength={20}
           enterKeyHint="done"
           autoCapitalize="words"
           autoComplete="off"
