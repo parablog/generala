@@ -378,7 +378,12 @@ function Over({ game, setScreen }) {
 }
 
 function History({ setScreen }) {
-  const games = load('generala-history') ?? []
+  const [games, setGames] = useState(() => load('generala-history') ?? [])
+  const remove = (i) => {
+    const rest = games.filter((_, j) => j !== i)
+    setGames(rest)
+    save('generala-history', rest)
+  }
   const stats = {}
   for (const g of games) {
     for (const p of g.players) {
@@ -419,9 +424,12 @@ function History({ setScreen }) {
       <ul className="flex flex-col gap-2">
         {games.map((g, i) => (
           <li key={i} className="rounded-xl bg-white p-4 shadow-sm dark:bg-slate-800">
-            <div className="flex justify-between text-sm text-stone-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-sm text-stone-500 dark:text-slate-400">
               <span>{new Date(g.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-              {g.servida && <span className="font-bold text-amber-500">★ SERVIDA</span>}
+              <span className="flex items-center gap-3">
+                {g.servida && <span className="font-bold text-amber-500">★ SERVIDA</span>}
+                <button className="px-1 text-stone-400" onClick={() => remove(i)} aria-label="Borrar partida">✕</button>
+              </span>
             </div>
             <div className="mt-1 font-bold">🏆 {g.winner}</div>
             <div className="text-sm">{g.players.map((p) => `${p.name} ${p.total}`).join(' · ')}</div>
