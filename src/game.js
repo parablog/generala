@@ -1,4 +1,4 @@
-// Pure game logic — Argentine Generala.
+// Pure game logic for the common Argentine Generala variant.
 export const CATS = [
   { id: 'u1', label: '1', face: 1 },
   { id: 'u2', label: '2', face: 2 },
@@ -15,7 +15,7 @@ export const CATS = [
 
 // scores: one object per player, catId -> { pts, servida?, tachado? }
 export const newGame = (players) => ({
-  players,
+  players: [...players],
   scores: players.map(() => ({})),
   servidaWinner: null,
   turn: 0,
@@ -49,11 +49,43 @@ export const dobleUnlocked = (sc) => !!sc.generala && !sc.generala.tachado
 export const isOver = (g) =>
   g.servidaWinner !== null || g.scores.every((s) => filled(s) === CATS.length)
 
-export const winner = (g) =>
-  g.servidaWinner ??
-  g.scores.map(total).reduce((best, t, i, arr) => (t > arr[best] ? i : best), 0)
+export const winners = (g) => {
+  if (g.servidaWinner !== null) return [g.servidaWinner]
+
+  const totals = g.scores.map(total)
+  const highest = Math.max(...totals)
+  return totals.flatMap((points, index) => (points === highest ? [index] : []))
+}
+
+// Kept for consumers that only need one player (a served Generala is always unique).
+export const winner = (g) => winners(g)[0]
+
+const validEntry = (cat, entry) => {
+  if (!entry || !Number.isFinite(entry.pts) || entry.pts < 0) return false
+  if (entry.tachado) return entry.pts === 0 && !entry.servida
+
+  if (cat.face) {
+    return !entry.servida && entry.pts % cat.face === 0 && entry.pts <= cat.face * 5
+  }
+
+  if (cat.servidaGana) return entry.pts === cat.pts
+  if (cat.servida) {
+    return entry.pts === (entry.servida ? cat.servida : cat.pts)
+  }
+  return !entry.servida && entry.pts === cat.pts
+}
 
 export const applyScore = (g, pIdx, catId, entry) => {
+  const cat = CATS.find(({ id }) => id === catId)
+  if (isOver(g)) throw new Error('La partida ya terminó')
+  if (pIdx !== currentPlayer(g)) throw new Error('No es el turno de ese jugador')
+  if (!cat) throw new Error('Categoría desconocida')
+  if (g.scores[pIdx]?.[catId]) throw new Error('La categoría ya tiene puntaje')
+  if (catId === 'doble' && !dobleUnlocked(g.scores[pIdx]) && !entry?.tachado) {
+    throw new Error('La Generala Doble requiere una Generala previa')
+  }
+  if (!validEntry(cat, entry)) throw new Error('Puntaje inválido')
+
   const g2 = {
     ...g,
     scores: g.scores.map((s, i) => (i === pIdx ? { ...s, [catId]: entry } : s)),

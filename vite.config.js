@@ -11,12 +11,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Generala',
+        id: '/generala/',
+        name: 'Generala Argentina',
         short_name: 'Generala',
-        description: 'Anotador de Generala',
-        lang: 'es',
-        theme_color: '#f59e0b',
-        background_color: '#faf6ec',
+        description: 'Anotador de Generala argentina para jugar en la mesa.',
+        lang: 'es-AR',
+        theme_color: '#5bb8e8',
+        background_color: '#f7f4ec',
         display: 'standalone',
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },

@@ -1,5 +1,16 @@
 import assert from 'node:assert'
-import { CATS, newGame, total, currentPlayer, dobleUnlocked, isOver, winner, applyScore, skipTurn } from './game.js'
+import {
+  CATS,
+  newGame,
+  total,
+  currentPlayer,
+  dobleUnlocked,
+  isOver,
+  winner,
+  winners,
+  applyScore,
+  skipTurn,
+} from './game.js'
 
 let g = newGame(['Ana', 'Beto'])
 
@@ -34,11 +45,20 @@ assert.equal(winner(h), 1)
 // normal end: all cells filled, highest total wins
 let f = newGame(['Ana', 'Beto'])
 for (const c of CATS) {
-  f = applyScore(f, 0, c.id, { pts: 10 })
-  f = applyScore(f, 1, c.id, { pts: 5 })
+  f = applyScore(f, 0, c.id, { pts: c.face ?? c.pts })
+  f = applyScore(f, 1, c.id, { pts: 0, tachado: true })
 }
 assert.ok(isOver(f))
 assert.equal(winner(f), 0)
+assert.deepEqual(winners(f), [0])
+
+// a tied card does not silently award the first player
+let tied = newGame(['Ana', 'Beto'])
+for (const c of CATS) {
+  tied = applyScore(tied, 0, c.id, { pts: 0, tachado: true })
+  tied = applyScore(tied, 1, c.id, { pts: 0, tachado: true })
+}
+assert.deepEqual(winners(tied), [0, 1])
 
 // skip turn: passes to the next player without scoring
 let s = newGame(['Ana', 'Beto', 'Caro'])
@@ -51,12 +71,32 @@ assert.equal(currentPlayer(s), 0) // wraps around
 
 // players with a full card are skipped automatically
 let d = newGame(['Ana', 'Beto'])
-for (const c of CATS) d = applyScore(d, 0, c.id, { pts: 1 }) // Ana's card full
+d = {
+  ...d,
+  scores: [Object.fromEntries(CATS.map((c) => [c.id, { pts: 0, tachado: true }])), {}],
+  turn: 1,
+}
 assert.equal(currentPlayer(d), 1)
 d = applyScore(d, 1, 'u1', { pts: 1 })
 assert.equal(currentPlayer(d), 1) // Ana is full, stays on Beto
 
 // old saves without a turn pointer still resolve a current player
 assert.equal(currentPlayer({ players: ['A', 'B'], scores: [{ u1: { pts: 1 } }, {}] }), 1)
+
+// invalid state transitions are rejected at the game boundary
+const guarded = newGame(['Ana', 'Beto'])
+assert.throws(() => applyScore(guarded, 1, 'u1', { pts: 1 }), /turno/)
+assert.throws(() => applyScore(guarded, 0, 'u1', { pts: 6 }), /inválido/)
+assert.throws(() => applyScore(guarded, 0, 'doble', { pts: 100 }), /Generala previa/)
+assert.throws(() => applyScore(guarded, 0, 'inventada', { pts: 10 }), /desconocida/)
+
+const firstScore = applyScore(guarded, 0, 'u1', { pts: 2 })
+assert.throws(() => applyScore(firstScore, 1, 'u1', { pts: 1, servida: true }), /inválido/)
+
+const complete = {
+  ...guarded,
+  scores: guarded.scores.map(() => Object.fromEntries(CATS.map((c) => [c.id, { pts: 0, tachado: true }]))),
+}
+assert.throws(() => applyScore(complete, 0, 'u1', { pts: 1 }), /terminó/)
 
 console.log('ok')

@@ -1,98 +1,205 @@
 import { useEffect, useState } from 'react'
 import {
-  CATS, newGame, total, filled, currentPlayer, dobleUnlocked, isOver, winner, applyScore, skipTurn,
+  ArrowLeft,
+  BookOpen,
+  ChevronRight,
+  CircleHelp,
+  History as HistoryIcon,
+  Home as HomeIcon,
+  Moon,
+  Plus,
+  RotateCcw,
+  SkipForward,
+  Sun,
+  Trash2,
+  Trophy,
+  Users,
+  X,
+} from 'lucide-react'
+import {
+  CATS,
+  applyScore,
+  currentPlayer,
+  dobleUnlocked,
+  isOver,
+  newGame,
+  skipTurn,
+  total,
+  winners,
 } from './game'
 
-const load = (k) => JSON.parse(localStorage.getItem(k) ?? 'null')
-const save = (k, v) => localStorage.setItem(k, JSON.stringify(v))
+const STORAGE = Object.freeze({
+  dark: 'generala-dark',
+  game: 'generala-game',
+  history: 'generala-history',
+})
 
-const btn = 'rounded-xl px-4 py-3 font-semibold active:scale-95 transition'
-const primary = `${btn} bg-amber-500 text-white shadow`
-const secondary = `${btn} bg-stone-200 text-stone-800 dark:bg-slate-700 dark:text-slate-100`
+const SCREEN_ROUTES = Object.freeze({
+  home: '',
+  setup: 'nueva',
+  game: 'partida',
+  over: 'resultado',
+  history: 'historial',
+  rules: 'reglas',
+})
+
+const ROUTE_SCREENS = Object.fromEntries(
+  Object.entries(SCREEN_ROUTES).map(([screen, route]) => [route, screen]),
+)
+
+const load = (key, fallback = null) => {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+const save = (key, value) => localStorage.setItem(key, JSON.stringify(value))
+
+const isStoredGame = (game) =>
+  Array.isArray(game?.players) &&
+  game.players.length >= 2 &&
+  game.players.every((name) => typeof name === 'string') &&
+  Array.isArray(game?.scores) &&
+  game.scores.length === game.players.length
+
+const screenFromLocation = (game) => {
+  const route = window.location.hash.replace(/^#\/?/, '').replace(/\/$/, '')
+  const requested = ROUTE_SCREENS[route] ?? 'home'
+  if (requested === 'game' && (!game || isOver(game))) return 'home'
+  if (requested === 'over' && (!game || !isOver(game))) return 'home'
+  return requested
+}
+
+const buttonBase = 'button-base'
+const primary = `${buttonBase} button-primary`
+const secondary = `${buttonBase} button-secondary`
 
 export default function App() {
   const [dark, setDark] = useState(
-    () => load('generala-dark') ?? matchMedia('(prefers-color-scheme: dark)').matches,
+    () => load(STORAGE.dark) ?? window.matchMedia('(prefers-color-scheme: dark)').matches,
   )
-  const [screen, setScreen] = useState('home')
-  const [game, setGame] = useState(() => load('generala-game'))
-  const [undo, setUndo] = useState([]) // stack of prior game states, newest last
-  const [cell, setCell] = useState(null) // { pIdx, cat } being scored
+  const [game, setGame] = useState(() => {
+    const stored = load(STORAGE.game)
+    return isStoredGame(stored) ? stored : null
+  })
+  const [screen, setScreenState] = useState(() => screenFromLocation(game))
+  const [undo, setUndo] = useState([])
+  const [cell, setCell] = useState(null)
+
+  const setScreen = (nextScreen, { replace = false } = {}) => {
+    setScreenState(nextScreen)
+    const hash = `#/${SCREEN_ROUTES[nextScreen]}`
+    if (window.location.hash === hash) return
+    window.history[replace ? 'replaceState' : 'pushState'](null, '', hash)
+  }
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
-    save('generala-dark', dark)
+    save(STORAGE.dark, dark)
   }, [dark])
 
+  useEffect(() => {
+    const handleRouteChange = () => setScreenState(screenFromLocation(game))
+    window.addEventListener('hashchange', handleRouteChange)
+    window.addEventListener('popstate', handleRouteChange)
+    return () => {
+      window.removeEventListener('hashchange', handleRouteChange)
+      window.removeEventListener('popstate', handleRouteChange)
+    }
+  }, [game])
+
   const startGame = (names) => {
-    const g = newGame(names)
-    setGame(g)
+    const nextGame = newGame(names)
+    setGame(nextGame)
     setUndo([])
-    save('generala-game', g)
+    save(STORAGE.game, nextGame)
     setScreen('game')
   }
 
   const score = (entry) => {
-    const g = applyScore(game, cell.pIdx, cell.cat.id, entry)
-    setUndo([...undo, game])
-    setGame(g)
+    if (!cell) return
+
+    const nextGame = applyScore(game, cell.pIdx, cell.cat.id, entry)
+    setUndo((states) => [...states, game])
+    setGame(nextGame)
     setCell(null)
-    if (isOver(g)) {
-      setUndo([])
-      localStorage.removeItem('generala-game')
-      save('generala-history', [
-        {
-          date: Date.now(),
-          servida: g.servidaWinner !== null,
-          winner: g.players[winner(g)],
-          players: g.players.map((name, i) => ({
-            name,
-            total: total(g.scores[i]),
-            generala: !!g.scores[i].generala && !g.scores[i].generala.tachado,
-          })),
-        },
-        ...(load('generala-history') ?? []),
-      ])
-      setScreen('over')
-    } else {
-      save('generala-game', g)
+
+    if (!isOver(nextGame)) {
+      save(STORAGE.game, nextGame)
+      return
     }
+
+    setUndo([])
+    localStorage.removeItem(STORAGE.game)
+    const winnerNames = winners(nextGame).map((index) => nextGame.players[index])
+    const historyEntry = {
+      date: Date.now(),
+      servida: nextGame.servidaWinner !== null,
+      winner: winnerNames.join(' y '),
+      winners: winnerNames,
+      players: nextGame.players.map((name, index) => ({
+        name,
+        total: total(nextGame.scores[index]),
+        generala: Boolean(nextGame.scores[index].generala && !nextGame.scores[index].generala.tachado),
+      })),
+    }
+    save(STORAGE.history, [historyEntry, ...load(STORAGE.history, [])])
+    setScreen('over')
   }
 
   const abandon = () => {
-    localStorage.removeItem('generala-game')
+    localStorage.removeItem(STORAGE.game)
     setGame(null)
     setUndo([])
+    setCell(null)
     setScreen('home')
   }
 
   const doUndo = () => {
-    const prev = undo.at(-1)
-    setGame(prev)
-    save('generala-game', prev)
-    setUndo(undo.slice(0, -1))
+    const previous = undo.at(-1)
+    if (!previous) return
+
+    setGame(previous)
+    save(STORAGE.game, previous)
+    setUndo((states) => states.slice(0, -1))
   }
 
   const skip = () => {
-    const g = skipTurn(game)
-    setUndo([...undo, game])
-    setGame(g)
-    save('generala-game', g)
+    const nextGame = skipTurn(game)
+    setUndo((states) => [...states, game])
+    setGame(nextGame)
+    save(STORAGE.game, nextGame)
   }
 
-  const props = { game, setScreen, startGame, dark, setDark, undo, doUndo, cell, setCell, score, abandon, skip }
+  const props = {
+    game,
+    setScreen,
+    startGame,
+    dark,
+    setDark,
+    undo,
+    doUndo,
+    cell,
+    setCell,
+    score,
+    abandon,
+    skip,
+  }
+
   return (
-    <div className="min-h-dvh bg-paper text-stone-800 dark:bg-slate-900 dark:text-slate-100">
+    <div className="app-shell">
       {screen === 'home' && <Home {...props} />}
       {screen === 'setup' && <Setup {...props} />}
-      {screen === 'game' && <Game {...props} />}
-      {screen === 'over' && <Over {...props} />}
+      {screen === 'game' && game && <Game {...props} />}
+      {screen === 'over' && game && <Over {...props} />}
       {screen === 'history' && <History {...props} />}
+      {screen === 'rules' && <Rules {...props} />}
     </div>
   )
 }
 
-// mini version of the app icon: amber die with white pips
 const PIPS = {
   1: [[12, 12]],
   2: [[7, 7], [17, 17]],
@@ -101,130 +208,198 @@ const PIPS = {
   5: [[7, 7], [17, 7], [12, 12], [7, 17], [17, 17]],
   6: [[7, 7], [17, 7], [7, 12], [17, 12], [7, 17], [17, 17]],
 }
-const Die = ({ face }) => (
-  <svg viewBox="0 0 24 24" className="mr-1.5 inline size-5 align-[-4px]">
-    <rect width="24" height="24" rx="6" className="fill-amber-500" />
-    {PIPS[face].map(([x, y], i) => (
-      <circle key={i} cx={x} cy={y} r="2.4" className="fill-white" />
+
+const Die = ({ face, className = 'size-5' }) => (
+  <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+    <rect width="24" height="24" rx="5" className="fill-current" />
+    {PIPS[face].map(([x, y], index) => (
+      <circle key={index} cx={x} cy={y} r="2.15" className="fill-white dark:fill-[#101a22]" />
     ))}
   </svg>
 )
 
-// tachado marker, same style family as Die
-const Cross = () => (
-  <svg viewBox="0 0 24 24" className="inline size-5 align-[-4px]" aria-label="Tachado">
-    <rect width="24" height="24" rx="6" className="fill-stone-300 dark:fill-slate-600" />
-    <path d="M8 8l8 8M16 8l-8 8" className="stroke-white" strokeWidth="2.5" strokeLinecap="round" />
-  </svg>
+const BrandMark = ({ compact = false }) => (
+  <div className={compact ? 'brand-mark brand-mark-compact' : 'brand-mark'} aria-hidden="true">
+    <span className="brand-sun"><Sun /></span>
+    <span className="brand-die brand-die-one"><Die face={5} className="size-full" /></span>
+    <span className="brand-die brand-die-two"><Die face={3} className="size-full" /></span>
+  </div>
 )
 
-const DarkToggle = ({ dark, setDark }) => (
-  <button className="text-2xl" onClick={() => setDark(!dark)} aria-label="Modo oscuro">
-    {dark ? '☀️' : '🌙'}
+const Cross = () => (
+  <span className="cross-mark" aria-label="Tachado">
+    <X size={16} strokeWidth={3} />
+  </span>
+)
+
+const IconButton = ({ label, children, className = '', ...props }) => (
+  <button className={`icon-button ${className}`} aria-label={label} title={label} {...props}>
+    {children}
   </button>
 )
 
+const DarkToggle = ({ dark, setDark }) => (
+  <IconButton label={dark ? 'Usar tema claro' : 'Usar tema oscuro'} onClick={() => setDark(!dark)}>
+    {dark ? <Sun /> : <Moon />}
+  </IconButton>
+)
+
+const ScreenHeader = ({ title, onBack, dark, setDark, action = null }) => (
+  <header className="screen-header">
+    <IconButton label="Volver" onClick={onBack}><ArrowLeft /></IconButton>
+    <h1>{title}</h1>
+    {action ?? <DarkToggle dark={dark} setDark={setDark} />}
+  </header>
+)
+
 function Home({ game, setScreen, dark, setDark }) {
+  const canContinue = game && !isOver(game)
+
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-8">
-      <div className="absolute top-4 right-4"><DarkToggle dark={dark} setDark={setDark} /></div>
-      <div className="text-7xl">🎲</div>
-      <h1 className="mb-6 text-5xl font-bold tracking-tight">Generala</h1>
-      <button className={`${primary} w-64 text-lg`} onClick={() => setScreen('setup')}>
-        Nueva Partida
-      </button>
-      {game && !isOver(game) && (
-        <button className={`${secondary} w-64 text-lg`} onClick={() => setScreen('game')}>
-          Continuar Partida
+    <main className="home-screen">
+      <header className="home-header">
+        <span className="country-label"><span className="flag-dot" /> Argentina</span>
+        <DarkToggle dark={dark} setDark={setDark} />
+      </header>
+
+      <section className="home-hero">
+        <div className="home-brand-copy">
+          <p className="eyebrow">Anotador de mesa</p>
+          <h1>Generala<br /><span>argentina</span></h1>
+          <p className="home-subtitle">La planilla de siempre, lista para la próxima ronda.</p>
+        </div>
+        <BrandMark />
+      </section>
+
+      <nav className="home-actions" aria-label="Acciones principales">
+        <button className={`${primary} home-primary`} onClick={() => setScreen('setup')}>
+          <Plus /> Nueva partida <ChevronRight className="ml-auto" />
         </button>
-      )}
-      <button className={`${secondary} w-64 text-lg`} onClick={() => setScreen('history')}>
-        Historial
-      </button>
-    </div>
+        {canContinue ? (
+          <button className={`${secondary} home-secondary`} onClick={() => setScreen('game')}>
+            <RotateCcw /> Continuar partida
+            <span className="action-meta">{game.players.length} jugadores</span>
+          </button>
+        ) : null}
+        <div className="home-link-row">
+          <button onClick={() => setScreen('history')}><HistoryIcon /> Historial</button>
+          <button onClick={() => setScreen('rules')}><BookOpen /> Reglas</button>
+        </div>
+      </nav>
+    </main>
   )
 }
 
-function Setup({ setScreen, startGame }) {
+function Setup({ setScreen, startGame, dark, setDark }) {
   const [names, setNames] = useState([])
   const [draft, setDraft] = useState('')
+  const [error, setError] = useState('')
+
   const add = () => {
-    const n = draft.trim()
-    if (n && names.length < 8) {
-      setNames([...names, n])
-      setDraft('')
+    const name = draft.trim()
+    if (!name || names.length >= 8) return
+    if (names.some((current) => current.localeCompare(name, 'es', { sensitivity: 'base' }) === 0)) {
+      setError('Ese nombre ya está en la mesa.')
+      return
     }
+
+    setNames((current) => [...current, name])
+    setDraft('')
+    setError('')
   }
+
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-4 p-6">
-      <h2 className="text-2xl font-bold">Jugadores</h2>
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => { e.preventDefault(); add() }}
-      >
-        <input
-          className="min-w-0 flex-1 rounded-xl border border-stone-300 bg-white px-4 py-3 dark:border-slate-600 dark:bg-slate-800"
-          placeholder="Nombre"
-          maxLength={20}
-          enterKeyHint="done"
-          autoCapitalize="words"
-          autoComplete="off"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          autoFocus
-        />
-        <button type="submit" className={primary} disabled={names.length >= 8}>+</button>
-      </form>
-      <ul className="flex flex-col gap-2">
-        {names.map((n, i) => (
-          <li key={i} className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-sm dark:bg-slate-800">
-            <span className="font-medium">{i + 1}. {n}</span>
-            <button
-              className="text-stone-400"
-              onClick={() => setNames(names.filter((_, j) => j !== i))}
-              aria-label={`Quitar ${n}`}
-            >✕</button>
-          </li>
-        ))}
-      </ul>
-      <p className="text-sm text-stone-500 dark:text-slate-400">De 2 a 8 jugadores</p>
-      <button className={`${primary} text-lg disabled:opacity-40`} disabled={names.length < 2} onClick={() => startGame(names)}>
-        Empezar
-      </button>
-      <button className={secondary} onClick={() => setScreen('home')}>Volver</button>
-    </div>
+    <main className="page-screen">
+      <ScreenHeader title="Nueva partida" onBack={() => setScreen('home')} dark={dark} setDark={setDark} />
+      <section className="page-content setup-content">
+        <div className="section-heading">
+          <span className="section-icon"><Users /></span>
+          <div>
+            <p className="eyebrow">Armá la mesa</p>
+            <h2>¿Quiénes juegan?</h2>
+          </div>
+        </div>
+
+        <form className="add-player" onSubmit={(event) => { event.preventDefault(); add() }}>
+          <label htmlFor="player-name">Nombre del jugador</label>
+          <div>
+            <input
+              id="player-name"
+              placeholder="Ej. Martina"
+              maxLength={20}
+              enterKeyHint="done"
+              autoCapitalize="words"
+              autoComplete="off"
+              value={draft}
+              onChange={(event) => { setDraft(event.target.value); setError('') }}
+              autoFocus
+            />
+            <IconButton label="Agregar jugador" type="submit" disabled={!draft.trim() || names.length >= 8}>
+              <Plus />
+            </IconButton>
+          </div>
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+        </form>
+
+        <div className="player-list-heading">
+          <span>Orden de juego</span>
+          <span>{names.length}/8</span>
+        </div>
+        <ol className="player-list">
+          {names.map((name, index) => (
+            <li key={name}>
+              <span className="player-number">{index + 1}</span>
+              <span>{name}</span>
+              <IconButton
+                label={`Quitar a ${name}`}
+                onClick={() => setNames((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+              >
+                <X />
+              </IconButton>
+            </li>
+          ))}
+          {names.length === 0 ? <li className="empty-player-list">Sumá entre 2 y 8 jugadores</li> : null}
+        </ol>
+
+        <button className={`${primary} start-button`} disabled={names.length < 2} onClick={() => startGame(names)}>
+          Empezar partida <ChevronRight />
+        </button>
+      </section>
+    </main>
   )
 }
 
-function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon, skip }) {
-  const cur = currentPlayer(game)
+function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon, skip, setScreen }) {
+  const current = currentPlayer(game)
   const [asking, setAsking] = useState(false)
+  const [highlightedCell, setHighlightedCell] = useState(null)
+
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <button className="text-xl" onClick={() => setAsking(true)} aria-label="Abandonar">🏠</button>
-        <span className="font-bold">
-          Turno: <span className="text-amber-600 dark:text-amber-400">{game.players[cur]}</span>
-        </span>
-        <div className="flex items-center gap-4">
-          <button className="text-xl" onClick={skip} aria-label="Saltar turno">⏭️</button>
-          {undo.length > 0 && <button className="text-xl" onClick={doUndo} aria-label="Deshacer">↩️</button>}
+    <main className="game-screen">
+      <header className="game-header">
+        <IconButton label="Salir de la partida" onClick={() => setAsking(true)}><HomeIcon /></IconButton>
+        <div className="turn-label">
+          <span>Turno de</span>
+          <strong>{game.players[current]}</strong>
+        </div>
+        <div className="game-tools">
+          <IconButton label="Ver reglas" onClick={() => setScreen('rules')}><CircleHelp /></IconButton>
+          <IconButton label="Pasar turno" onClick={skip}><SkipForward /></IconButton>
+          <IconButton label="Deshacer" onClick={doUndo} disabled={undo.length === 0}><RotateCcw /></IconButton>
           <DarkToggle dark={dark} setDark={setDark} />
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto">
-        {/* border-separate: sticky + border-collapse breaks on iOS Safari */}
-        <table className="w-full border-separate border-spacing-0 text-sm">
+      <div className="score-table-wrap">
+        <table
+          className={game.players.length <= 5 ? 'score-table score-table-fit' : 'score-table'}
+        >
           <thead>
             <tr>
-              <th className="sticky top-0 left-0 z-20 bg-paper p-2 text-left dark:bg-slate-900" />
-              {game.players.map((p, i) => (
-                <th
-                  key={i}
-                  className={`sticky top-0 z-10 min-w-16 p-2 font-bold ${i === cur ? 'rounded-t-lg bg-amber-500 text-white' : 'bg-paper dark:bg-slate-900'}`}
-                >
-                  {p}
+              <th className="category-head"><span>Juego</span></th>
+              {game.players.map((player, index) => (
+                <th key={player} className={index === current ? 'current-column player-head' : 'player-head'}>
+                  <span>{player}</span>
                 </th>
               ))}
             </tr>
@@ -232,212 +407,293 @@ function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon
           <tbody>
             {CATS.map((cat) => (
               <tr key={cat.id}>
-                <td className="sticky left-0 z-10 border-t border-stone-200 bg-paper px-2 py-3 font-medium whitespace-nowrap dark:border-slate-700 dark:bg-slate-900">
-                  {cat.face && <Die face={cat.face} />}
-                  {cat.label}
-                </td>
-                {game.players.map((_, i) => {
-                  const e = game.scores[i][cat.id]
-                  // locked = can't score the 100, but tachar is always allowed
-                  const locked = cat.id === 'doble' && !dobleUnlocked(game.scores[i])
-                  const tappable = !e && i === cur
+                <th scope="row" className="category-cell" aria-label={cat.label} title={cat.label}>
+                  {cat.face ? <Die face={cat.face} /> : <span className="category-initial">{cat.id === 'doble' ? 'D' : cat.label[0]}</span>}
+                  <span>{cat.label}</span>
+                </th>
+                {game.players.map((_, playerIndex) => {
+                  const entry = game.scores[playerIndex][cat.id]
+                  const locked = cat.id === 'doble' && !dobleUnlocked(game.scores[playerIndex])
+                  const tappable = !entry && playerIndex === current
+                  const highlightKey = `${playerIndex}-${cat.id}`
+                  const isHighlighted = highlightedCell === highlightKey
+                  const label = entry
+                    ? `${cat.label}: ${entry.tachado ? 'tachado' : `${entry.pts} puntos`}`
+                    : `Anotar ${cat.label} para ${game.players[playerIndex]}`
+
                   return (
-                    <td
-                      key={i}
-                      className={`border-t border-stone-200 px-2 py-3 text-center dark:border-slate-700 ${i === cur ? 'bg-amber-100 dark:bg-amber-500/10' : ''} ${locked ? 'opacity-30' : ''}`}
-                      onClick={() => tappable && setCell({ pIdx: i, cat, locked })}
-                    >
-                      {e ? (
-                        e.tachado ? (
-                          <Cross />
-                        ) : (
-                          <span className="font-semibold">
-                            {e.pts}
-                            {e.servida && <span className="text-amber-500"> ★</span>}
-                          </span>
-                        )
-                      ) : locked ? '🔒' : tappable ? (
-                        <span className="text-stone-300 dark:text-slate-600">·</span>
-                      ) : ''}
+                    <td key={playerIndex} className={playerIndex === current ? 'current-column' : ''}>
+                      {entry ? (
+                        <span className="score-value" aria-label={label}>
+                          {entry.tachado ? <Cross /> : entry.pts}
+                          {entry.servida ? <Sun className="served-mark" aria-label="Servida" /> : null}
+                        </span>
+                      ) : tappable ? (
+                        <button
+                          className={locked ? 'score-button locked-score' : 'score-button'}
+                          onClick={() => setCell({ pIdx: playerIndex, cat, locked })}
+                          aria-label={label}
+                        >
+                          {locked ? <span aria-hidden="true">—</span> : <Plus aria-hidden="true" />}
+                        </button>
+                      ) : (
+                        <button
+                          className={isHighlighted ? 'missing-cell missing-cell-highlighted' : 'missing-cell'}
+                          onClick={() => setHighlightedCell((selected) => selected === highlightKey ? null : highlightKey)}
+                          aria-label={`${isHighlighted ? 'Quitar marca de' : 'Marcar'} ${cat.label} pendiente para ${game.players[playerIndex]}`}
+                          aria-pressed={isHighlighted}
+                        />
+                      )}
                     </td>
                   )
                 })}
               </tr>
             ))}
-            <tr>
-              <td className="sticky bottom-0 left-0 z-20 border-t-2 border-stone-400 bg-paper p-2 font-bold dark:border-slate-500 dark:bg-slate-900">
-                Total
-              </td>
-              {game.scores.map((s, i) => (
-                <td
-                  key={i}
-                  className="sticky bottom-0 z-10 border-t-2 border-stone-400 bg-paper p-2 text-center text-base font-bold dark:border-slate-500 dark:bg-slate-900"
-                >
-                  {total(s)}
-                </td>
-              ))}
+            <tr className="total-row">
+              <th scope="row">Total</th>
+              {game.scores.map((scores, index) => <td key={index}>{total(scores)}</td>)}
             </tr>
           </tbody>
         </table>
       </div>
 
-      {cell && <ScoreSheet cell={cell} onClose={() => setCell(null)} onScore={score} playerName={game.players[cell.pIdx]} />}
+      {cell ? (
+        <ScoreSheet
+          cell={cell}
+          onClose={() => setCell(null)}
+          onScore={score}
+          playerName={game.players[cell.pIdx]}
+        />
+      ) : null}
 
-      {asking && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={() => setAsking(false)}>
-          <div
-            className="w-full rounded-t-2xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] dark:bg-slate-800"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-4 text-lg font-bold">¿Abandonar la partida?</h3>
-            <div className="flex flex-col gap-2">
-              <button className={`${btn} bg-red-600 text-white`} onClick={abandon}>
-                Abandonar
-              </button>
-              <button className={secondary} onClick={() => setAsking(false)}>
-                Seguir jugando
-              </button>
-            </div>
-          </div>
+      {asking ? (
+        <Modal title="¿Salir de la partida?" onClose={() => setAsking(false)}>
+          <p className="modal-copy">La partida guardada se va a eliminar.</p>
+          <button className="button-base button-danger" onClick={abandon}>Salir y eliminar</button>
+          <button className={secondary} onClick={() => setAsking(false)}>Seguir jugando</button>
+        </Modal>
+      ) : null}
+    </main>
+  )
+}
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
+      <section
+        className="modal-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-heading">
+          <h2 id="modal-title">{title}</h2>
+          <IconButton label="Cerrar" onClick={onClose}><X /></IconButton>
         </div>
-      )}
+        <div className="modal-actions">{children}</div>
+      </section>
     </div>
   )
 }
 
 function ScoreSheet({ cell, onClose, onScore, playerName }) {
   const { cat } = cell
-  // ponytail: no confirm step — one tap scores, undo covers mistakes
-  const opt = (label, entry, key) => (
+  const option = (label, entry, key = label, emphasis = false) => (
     <button
-      key={key ?? label}
-      className={`${btn} bg-stone-100 dark:bg-slate-700`}
+      key={key}
+      className={emphasis ? 'score-option score-option-served' : 'score-option'}
       onClick={() => onScore(entry)}
     >
       {label}
+      {emphasis ? <Sun /> : null}
     </button>
   )
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
-      <div
-        className="w-full rounded-t-2xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] dark:bg-slate-800"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="mb-4 text-lg font-bold">
-          {playerName} — {cat.label}
-        </h3>
-        <div className={`mb-4 grid gap-2 ${cat.face ? 'grid-cols-3' : 'grid-cols-1'}`}>
-          {cat.face
-            ? [0, 1, 2, 3, 4, 5].map((n) =>
-                opt(`${n * cat.face}`, { pts: n * cat.face }, n))
-            : cat.servidaGana
-              ? [opt('Generala (50)', { pts: 50 }), opt('¡Servida! — Gana el juego 🏆', { pts: 50, servida: true })]
-              : cat.servida
-                ? [opt(`Normal (${cat.pts})`, { pts: cat.pts }), opt(`Servida (${cat.servida}) ★`, { pts: cat.servida, servida: true })]
-                : cell.locked
-                  ? [] // doble still locked: tachar only
-                  : [opt(`${cat.label} (${cat.pts})`, { pts: cat.pts })]}
-          {opt('Tachar ✗', { pts: 0, tachado: true })}
-        </div>
-        <button className={`${secondary} w-full`} onClick={onClose}>Cancelar</button>
+    <Modal title={`${playerName} · ${cat.label}`} onClose={onClose}>
+      <div className={cat.face ? 'score-options score-options-numeric' : 'score-options'}>
+        {cat.face
+          ? [0, 1, 2, 3, 4, 5].map((count) => option(
+              `${count * cat.face} puntos`,
+              { pts: count * cat.face },
+              count,
+            ))
+          : cat.servidaGana
+            ? [
+                option('Generala · 50', { pts: 50 }),
+                option('Servida · gana la partida', { pts: 50, servida: true }, 'servida', true),
+              ]
+            : cat.servida
+              ? [
+                  option(`Armada · ${cat.pts}`, { pts: cat.pts }),
+                  option(`Servida · ${cat.servida}`, { pts: cat.servida, servida: true }, 'servida', true),
+                ]
+              : cell.locked
+                ? []
+                : [option(`${cat.label} · ${cat.pts}`, { pts: cat.pts })]}
+        {option('Tachar categoría', { pts: 0, tachado: true })}
       </div>
-    </div>
+      {cell.locked ? <p className="locked-note">La Doble se habilita después de anotar Generala.</p> : null}
+    </Modal>
   )
 }
 
-function Over({ game, setScreen }) {
-  const w = winner(game)
-  const servida = game.servidaWinner !== null
+function Over({ game, setScreen, dark, setDark }) {
+  const winnerIndexes = winners(game)
+  const isTie = winnerIndexes.length > 1
+  const isServida = game.servidaWinner !== null
+  const winnerNames = winnerIndexes.map((index) => game.players[index])
   const ranked = game.players
-    .map((name, i) => ({ name, total: total(game.scores[i]), i }))
-    .sort((a, b) => (a.i === w ? -1 : b.i === w ? 1 : b.total - a.total))
+    .map((name, index) => ({ name, total: total(game.scores[index]), index }))
+    .sort((a, b) => b.total - a.total || a.index - b.index)
+
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center gap-4 p-8">
-      <div className={`text-7xl ${servida ? 'animate-party' : ''}`}>{servida ? '🎲' : '🏆'}</div>
-      {servida && (
-        <p className="text-center text-2xl font-bold text-amber-600 dark:text-amber-400">
-          ¡GENERALA SERVIDA!
-        </p>
-      )}
-      <h2 className="text-3xl font-bold">Ganó {game.players[w]}</h2>
-      {servida && <p className="text-stone-500 dark:text-slate-400">El héroe de la mesa 🫡</p>}
-      <ol className="w-full">
-        {ranked.map((p, pos) => (
-          <li
-            key={p.i}
-            className={`mt-2 flex justify-between rounded-xl px-4 py-3 ${p.i === w ? 'bg-amber-500 font-bold text-white' : 'bg-white dark:bg-slate-800'}`}
-          >
-            <span>{pos + 1}. {p.name}</span>
-            <span>{p.total}</span>
-          </li>
-        ))}
-      </ol>
-      <button className={`${primary} w-full text-lg`} onClick={() => setScreen('setup')}>Nueva Partida</button>
-      <button className={`${secondary} w-full`} onClick={() => setScreen('home')}>Volver al Inicio</button>
-    </div>
+    <main className="page-screen over-screen">
+      <ScreenHeader title="Resultado" onBack={() => setScreen('home')} dark={dark} setDark={setDark} />
+      <section className="page-content over-content">
+        <div className="winner-symbol"><Trophy /></div>
+        <p className="eyebrow">{isServida ? 'Generala servida' : isTie ? 'Final empatado' : 'Fin de la partida'}</p>
+        <h2>{isTie ? `Empate: ${winnerNames.join(' y ')}` : `Ganó ${winnerNames[0]}`}</h2>
+        {isTie ? <p className="result-copy">La mesa decide una mano de desempate.</p> : null}
+
+        <ol className="ranking-list">
+          {ranked.map((player, index) => (
+            <li key={player.index} className={winnerIndexes.includes(player.index) ? 'ranking-winner' : ''}>
+              <span className="rank-number">{index + 1}</span>
+              <strong>{player.name}</strong>
+              <span>{player.total} pts.</span>
+            </li>
+          ))}
+        </ol>
+
+        <button className={`${primary} start-button`} onClick={() => setScreen('setup')}>
+          <Plus /> Nueva partida
+        </button>
+        <button className={secondary} onClick={() => setScreen('home')}>Volver al inicio</button>
+      </section>
+    </main>
   )
 }
 
-function History({ setScreen }) {
-  const [games, setGames] = useState(() => load('generala-history') ?? [])
-  const remove = (i) => {
-    const rest = games.filter((_, j) => j !== i)
-    setGames(rest)
-    save('generala-history', rest)
+function History({ setScreen, dark, setDark }) {
+  const [games, setGames] = useState(() => load(STORAGE.history, []))
+  const remove = (index) => {
+    const remaining = games.filter((_, gameIndex) => gameIndex !== index)
+    setGames(remaining)
+    save(STORAGE.history, remaining)
   }
+
   const stats = {}
-  for (const g of games) {
-    for (const p of g.players) {
-      const s = (stats[p.name] ??= { games: 0, wins: 0, points: 0, generalas: 0 })
-      s.games++
-      s.points += p.total
-      if (p.generala) s.generalas++
-      if (p.name === g.winner) s.wins++
+  for (const game of games) {
+    const gameWinners = game.winners ?? [game.winner]
+    for (const player of game.players) {
+      const stat = (stats[player.name] ??= { games: 0, wins: 0, points: 0, generalas: 0 })
+      stat.games += 1
+      stat.points += player.total
+      if (player.generala) stat.generalas += 1
+      if (gameWinners.includes(player.name)) stat.wins += 1
     }
   }
-  const board = Object.entries(stats).sort((a, b) => b[1].wins - a[1].wins)
+  const board = Object.entries(stats).sort((a, b) => b[1].wins - a[1].wins || b[1].points - a[1].points)
+
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-4 p-6">
-      <h2 className="text-2xl font-bold">Historial</h2>
-      {games.length === 0 && <p className="text-stone-500 dark:text-slate-400">Todavía no hay partidas.</p>}
-      {board.length > 0 && (
-        <table className="w-full rounded-xl bg-white text-sm shadow-sm dark:bg-slate-800">
-          <thead>
-            <tr className="text-left text-stone-500 dark:text-slate-400">
-              <th className="p-3">Jugador</th>
-              <th className="p-3 text-center">Victorias</th>
-              <th className="p-3 text-center">Promedio</th>
-              <th className="p-3 text-center">Generalas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {board.map(([name, s]) => (
-              <tr key={name} className="border-t border-stone-100 dark:border-slate-700">
-                <td className="p-3 font-medium">{name}</td>
-                <td className="p-3 text-center">{s.wins}</td>
-                <td className="p-3 text-center">{Math.round(s.points / s.games)}</td>
-                <td className="p-3 text-center">{s.generalas}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <ul className="flex flex-col gap-2">
-        {games.map((g, i) => (
-          <li key={i} className="rounded-xl bg-white p-4 shadow-sm dark:bg-slate-800">
-            <div className="flex items-center justify-between text-sm text-stone-500 dark:text-slate-400">
-              <span>{new Date(g.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-              <span className="flex items-center gap-3">
-                {g.servida && <span className="font-bold text-amber-500">★ SERVIDA</span>}
-                <button className="px-1 text-stone-400" onClick={() => remove(i)} aria-label="Borrar partida">✕</button>
-              </span>
+    <main className="page-screen">
+      <ScreenHeader title="Historial" onBack={() => setScreen('home')} dark={dark} setDark={setDark} />
+      <section className="page-content history-content">
+        {games.length === 0 ? (
+          <div className="empty-state">
+            <HistoryIcon />
+            <h2>Todavía no hay partidas</h2>
+            <p>Los resultados terminados van a aparecer acá.</p>
+          </div>
+        ) : (
+          <>
+            <div className="section-heading compact-heading">
+              <span className="section-icon"><Trophy /></span>
+              <div><p className="eyebrow">Tabla general</p><h2>La mesa</h2></div>
             </div>
-            <div className="mt-1 font-bold">🏆 {g.winner}</div>
-            <div className="text-sm">{g.players.map((p) => `${p.name} ${p.total}`).join(' · ')}</div>
-          </li>
-        ))}
-      </ul>
-      <button className={secondary} onClick={() => setScreen('home')}>Volver</button>
-    </div>
+            <div className="stats-table-wrap">
+              <table className="stats-table">
+                <thead><tr><th>Jugador</th><th>PG</th><th>Prom.</th><th>Gen.</th></tr></thead>
+                <tbody>
+                  {board.map(([name, stat]) => (
+                    <tr key={name}>
+                      <th scope="row">{name}</th>
+                      <td>{stat.wins}</td>
+                      <td>{Math.round(stat.points / stat.games)}</td>
+                      <td>{stat.generalas}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <h2 className="list-title">Últimas partidas</h2>
+            <ul className="history-list">
+              {games.map((game, index) => (
+                <li key={`${game.date}-${index}`}>
+                  <div className="history-date">
+                    <time dateTime={new Date(game.date).toISOString()}>
+                      {new Date(game.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </time>
+                    <IconButton label="Borrar partida" onClick={() => remove(index)}><Trash2 /></IconButton>
+                  </div>
+                  <div className="history-winner">
+                    {game.servida ? <Sun /> : <Trophy />}
+                    <strong>{(game.winners?.length ?? 1) > 1 ? `Empate: ${game.winner}` : game.winner}</strong>
+                  </div>
+                  <p>{game.players.map((player) => `${player.name} ${player.total}`).join(' · ')}</p>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+    </main>
+  )
+}
+
+function Rules({ setScreen, dark, setDark, game }) {
+  return (
+    <main className="page-screen">
+      <ScreenHeader title="Reglas" onBack={() => setScreen(game && !isOver(game) ? 'game' : 'home')} dark={dark} setDark={setDark} />
+      <section className="page-content rules-content">
+        <div className="rules-intro">
+          <BrandMark compact />
+          <div><p className="eyebrow">Variante argentina</p><h2>Generala clásica</h2></div>
+        </div>
+
+        <section className="rule-section">
+          <span className="rule-number">01</span>
+          <div><h3>La vuelta</h3><p>Cada jugador tira cinco dados hasta tres veces. Al cerrar el turno anota una categoría libre o la tacha.</p></div>
+        </section>
+        <section className="rule-section">
+          <span className="rule-number">02</span>
+          <div><h3>Números</h3><p>Del 1 al 6 se suma solamente el valor de los dados iguales. Cinco dados son el máximo de cada casillero.</p></div>
+        </section>
+        <section className="rule-section">
+          <span className="rule-number">03</span>
+          <div>
+            <h3>Juegos mayores</h3>
+            <dl className="rule-scores">
+              <div><dt>Escalera</dt><dd>20 / 25 servida</dd></div>
+              <div><dt>Full</dt><dd>30 / 35 servida</dd></div>
+              <div><dt>Póker</dt><dd>40 / 45 servida</dd></div>
+              <div><dt>Generala</dt><dd>50</dd></div>
+              <div><dt>Generala Doble</dt><dd>100</dd></div>
+            </dl>
+          </div>
+        </section>
+        <section className="rule-section rule-highlight">
+          <span className="rule-number"><Sun /></span>
+          <div><h3>Servida</h3><p>Escalera, Full o Póker en el primer tiro suman 5 puntos extra. Una Generala servida gana la partida en el acto.</p></div>
+        </section>
+        <section className="rule-section">
+          <span className="rule-number">04</span>
+          <div><h3>Final</h3><p>Gana el puntaje total más alto. Si hay empate, la mesa juega una mano adicional de desempate.</p></div>
+        </section>
+      </section>
+    </main>
   )
 }
