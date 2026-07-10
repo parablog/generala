@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  CATS, newGame, total, filled, currentPlayer, dobleUnlocked, isOver, winner, applyScore,
+  CATS, newGame, total, filled, currentPlayer, dobleUnlocked, isOver, winner, applyScore, skipTurn,
 } from './game'
 
 const load = (k) => JSON.parse(localStorage.getItem(k) ?? 'null')
@@ -16,7 +16,7 @@ export default function App() {
   )
   const [screen, setScreen] = useState('home')
   const [game, setGame] = useState(() => load('generala-game'))
-  const [undo, setUndo] = useState(null) // ponytail: single-level undo, per spec
+  const [undo, setUndo] = useState([]) // stack of prior game states, newest last
   const [cell, setCell] = useState(null) // { pIdx, cat } being scored
 
   useEffect(() => {
@@ -27,18 +27,18 @@ export default function App() {
   const startGame = (names) => {
     const g = newGame(names)
     setGame(g)
-    setUndo(null)
+    setUndo([])
     save('generala-game', g)
     setScreen('game')
   }
 
   const score = (entry) => {
     const g = applyScore(game, cell.pIdx, cell.cat.id, entry)
-    setUndo(game)
+    setUndo([...undo, game])
     setGame(g)
     setCell(null)
     if (isOver(g)) {
-      setUndo(null)
+      setUndo([])
       localStorage.removeItem('generala-game')
       save('generala-history', [
         {
@@ -62,17 +62,25 @@ export default function App() {
   const abandon = () => {
     localStorage.removeItem('generala-game')
     setGame(null)
-    setUndo(null)
+    setUndo([])
     setScreen('home')
   }
 
   const doUndo = () => {
-    setGame(undo)
-    save('generala-game', undo)
-    setUndo(null)
+    const prev = undo.at(-1)
+    setGame(prev)
+    save('generala-game', prev)
+    setUndo(undo.slice(0, -1))
   }
 
-  const props = { game, setScreen, startGame, dark, setDark, undo, doUndo, cell, setCell, score, abandon }
+  const skip = () => {
+    const g = skipTurn(game)
+    setUndo([...undo, game])
+    setGame(g)
+    save('generala-game', g)
+  }
+
+  const props = { game, setScreen, startGame, dark, setDark, undo, doUndo, cell, setCell, score, abandon, skip }
   return (
     <div className="min-h-dvh bg-paper text-stone-800 dark:bg-slate-900 dark:text-slate-100">
       {screen === 'home' && <Home {...props} />}
@@ -187,7 +195,7 @@ function Setup({ setScreen, startGame }) {
   )
 }
 
-function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon }) {
+function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon, skip }) {
   const cur = currentPlayer(game)
   const [asking, setAsking] = useState(false)
   return (
@@ -198,7 +206,8 @@ function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon
           Turno: <span className="text-amber-600 dark:text-amber-400">{game.players[cur]}</span>
         </span>
         <div className="flex items-center gap-4">
-          {undo && <button className="text-xl" onClick={doUndo} aria-label="Deshacer">↩️</button>}
+          <button className="text-xl" onClick={skip} aria-label="Saltar turno">⏭️</button>
+          {undo.length > 0 && <button className="text-xl" onClick={doUndo} aria-label="Deshacer">↩️</button>}
           <DarkToggle dark={dark} setDark={setDark} />
         </div>
       </header>

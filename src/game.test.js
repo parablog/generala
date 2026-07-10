@@ -1,5 +1,5 @@
 import assert from 'node:assert'
-import { CATS, newGame, total, currentPlayer, dobleUnlocked, isOver, winner, applyScore } from './game.js'
+import { CATS, newGame, total, currentPlayer, dobleUnlocked, isOver, winner, applyScore, skipTurn } from './game.js'
 
 let g = newGame(['Ana', 'Beto'])
 
@@ -39,5 +39,24 @@ for (const c of CATS) {
 }
 assert.ok(isOver(f))
 assert.equal(winner(f), 0)
+
+// skip turn: passes to the next player without scoring
+let s = newGame(['Ana', 'Beto', 'Caro'])
+s = skipTurn(s)
+assert.equal(currentPlayer(s), 1)
+s = applyScore(s, 1, 'u1', { pts: 2 })
+assert.equal(currentPlayer(s), 2)
+s = skipTurn(s)
+assert.equal(currentPlayer(s), 0) // wraps around
+
+// players with a full card are skipped automatically
+let d = newGame(['Ana', 'Beto'])
+for (const c of CATS) d = applyScore(d, 0, c.id, { pts: 1 }) // Ana's card full
+assert.equal(currentPlayer(d), 1)
+d = applyScore(d, 1, 'u1', { pts: 1 })
+assert.equal(currentPlayer(d), 1) // Ana is full, stays on Beto
+
+// old saves without a turn pointer still resolve a current player
+assert.equal(currentPlayer({ players: ['A', 'B'], scores: [{ u1: { pts: 1 } }, {}] }), 1)
 
 console.log('ok')

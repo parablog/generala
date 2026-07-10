@@ -18,18 +18,31 @@ export const newGame = (players) => ({
   players,
   scores: players.map(() => ({})),
   servidaWinner: null,
+  turn: 0,
 })
 
 export const total = (sc) => Object.values(sc).reduce((a, e) => a + e.pts, 0)
 
 export const filled = (sc) => Object.keys(sc).length
 
-// Turn order: everyone fills one category per round, so the first player
-// with the fewest filled cells is up.
+// Explicit turn pointer (skips make it non-derivable). The filled-count
+// fallback covers games saved before `turn` existed.
 export const currentPlayer = (g) => {
+  if (g.turn != null) return g.turn
   const counts = g.scores.map(filled)
   return counts.indexOf(Math.min(...counts))
 }
+
+// Next player after `from` who still has empty categories.
+const nextTurn = (g, from) => {
+  for (let k = 1; k <= g.players.length; k++) {
+    const i = (from + k) % g.players.length
+    if (filled(g.scores[i]) < CATS.length) return i
+  }
+  return from
+}
+
+export const skipTurn = (g) => ({ ...g, turn: nextTurn(g, currentPlayer(g)) })
 
 export const dobleUnlocked = (sc) => !!sc.generala && !sc.generala.tachado
 
@@ -40,9 +53,12 @@ export const winner = (g) =>
   g.servidaWinner ??
   g.scores.map(total).reduce((best, t, i, arr) => (t > arr[best] ? i : best), 0)
 
-export const applyScore = (g, pIdx, catId, entry) => ({
-  ...g,
-  scores: g.scores.map((s, i) => (i === pIdx ? { ...s, [catId]: entry } : s)),
-  servidaWinner:
-    catId === 'generala' && entry.servida && !entry.tachado ? pIdx : g.servidaWinner,
-})
+export const applyScore = (g, pIdx, catId, entry) => {
+  const g2 = {
+    ...g,
+    scores: g.scores.map((s, i) => (i === pIdx ? { ...s, [catId]: entry } : s)),
+    servidaWinner:
+      catId === 'generala' && entry.servida && !entry.tachado ? pIdx : g.servidaWinner,
+  }
+  return { ...g2, turn: nextTurn(g2, pIdx) }
+}
