@@ -14,6 +14,7 @@ import {
   Moon,
   Plus,
   Redo2,
+  RefreshCw,
   RotateCcw,
   SkipForward,
   Settings as SettingsIcon,
@@ -692,14 +693,22 @@ function Over({ game, setScreen, dark, setDark }) {
 
 function History({ setScreen, dark, setDark, historyVersion, syncRemoteHistory }) {
   const [games, setGames] = useState(() => load(STORAGE.history, []))
+  const [syncState, setSyncState] = useState('idle')
+  const remoteEnabled = Boolean(readRemoteConfig()?.enabled)
 
   useEffect(() => {
     setGames(load(STORAGE.history, []))
   }, [historyVersion])
 
-  useEffect(() => {
-    syncRemoteHistory().catch(() => {})
-  }, [])
+  const refresh = () => {
+    if (!remoteEnabled) return
+    setSyncState('loading')
+    syncRemoteHistory()
+      .then(() => setSyncState('idle'))
+      .catch(() => setSyncState('error'))
+  }
+
+  useEffect(refresh, [])
 
   const remove = (index) => {
     const removed = games[index]
@@ -728,8 +737,23 @@ function History({ setScreen, dark, setDark, historyVersion, syncRemoteHistory }
 
   return (
     <main className="page-screen">
-      <ScreenHeader title="Historial" onBack={() => setScreen('home')} dark={dark} setDark={setDark} />
+      <ScreenHeader
+        title="Historial"
+        onBack={() => setScreen('home')}
+        dark={dark}
+        setDark={setDark}
+        action={remoteEnabled ? (
+          <IconButton label="Actualizar historial" onClick={refresh} disabled={syncState === 'loading'}>
+            <RefreshCw className={syncState === 'loading' ? 'animate-spin' : undefined} />
+          </IconButton>
+        ) : null}
+      />
       <section className="page-content history-content">
+        {syncState === 'error' ? (
+          <p className="settings-status settings-status-error" role="alert">
+            No se pudo sincronizar. Revisá la conexión o los ajustes.
+          </p>
+        ) : null}
         {games.length === 0 ? (
           <div className="empty-state">
             <HistoryIcon />
