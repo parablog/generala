@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "node src/game.test.js",
+    "test": "node src/game.test.js && node src/remote.test.js",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

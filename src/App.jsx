@@ -2,17 +2,25 @@ import { useEffect, useState } from 'react'
 import {
   ArrowLeft,
   BookOpen,
+  CheckCircle2,
   ChevronRight,
   CircleHelp,
+  Cloud,
+  Crown,
+  Eye,
+  EyeOff,
   History as HistoryIcon,
   Home as HomeIcon,
   Moon,
   Plus,
+  Redo2,
   RotateCcw,
   SkipForward,
+  Settings as SettingsIcon,
   Sun,
   Trash2,
   Trophy,
+  Undo2,
   Users,
   X,
 } from 'lucide-react'
@@ -21,17 +29,29 @@ import {
   applyScore,
   currentPlayer,
   dobleUnlocked,
+  endGame,
   isOver,
   newGame,
   skipTurn,
   total,
   winners,
 } from './game'
+import {
+  deleteRemoteHistoryEntry,
+  fetchRemoteHistory,
+  planSync,
+  readRemoteConfig,
+  removeRemoteConfig,
+  saveRemoteConfig,
+  saveRemoteHistoryEntry,
+  testRemoteConnection,
+} from './remote'
 
 const STORAGE = Object.freeze({
   dark: 'generala-dark',
   game: 'generala-game',
   history: 'generala-history',
+  deleted: 'generala-deleted',
 })
 
 const SCREEN_ROUTES = Object.freeze({
@@ -41,6 +61,7 @@ const SCREEN_ROUTES = Object.freeze({
   over: 'resultado',
   history: 'historial',
   rules: 'reglas',
+  settings: 'ajustes',
 })
 
 const ROUTE_SCREENS = Object.fromEntries(
@@ -56,6 +77,10 @@ const load = (key, fallback = null) => {
 }
 
 const save = (key, value) => localStorage.setItem(key, JSON.stringify(value))
+
+const ensureHistoryIds = (games) => games.map((game) => (
+  game.id ? game : { ...game, id: crypto.randomUUID() }
+))
 
 const isStoredGame = (game) =>
   Array.isArray(game?.players) &&
@@ -86,13 +111,32 @@ export default function App() {
   })
   const [screen, setScreenState] = useState(() => screenFromLocation(game))
   const [undo, setUndo] = useState([])
+  const [redo, setRedo] = useState([])
   const [cell, setCell] = useState(null)
+  const [historyVersion, setHistoryVersion] = useState(0)
 
   const setScreen = (nextScreen, { replace = false } = {}) => {
     setScreenState(nextScreen)
     const hash = `#/${SCREEN_ROUTES[nextScreen]}`
     if (window.location.hash === hash) return
     window.history[replace ? 'replaceState' : 'pushState'](null, '', hash)
+  }
+
+  const syncRemoteHistory = async (providedConfig = readRemoteConfig()) => {
+    if (!providedConfig?.enabled) return load(STORAGE.history, [])
+
+    const localGames = ensureHistoryIds(load(STORAGE.history, []))
+    save(STORAGE.history, localGames)
+    const remoteGames = await fetchRemoteHistory(providedConfig)
+    const { toUpload, toDelete, merged } = planSync(localGames, remoteGames, load(STORAGE.deleted, []))
+    await Promise.all([
+      ...toUpload.map((entry) => saveRemoteHistoryEntry(providedConfig, entry)),
+      ...toDelete.map((id) => deleteRemoteHistoryEntry(providedConfig, id)),
+    ])
+
+    save(STORAGE.history, merged)
+    setHistoryVersion((version) => version + 1)
+    return merged
   }
 
   useEffect(() => {
@@ -110,12 +154,45 @@ export default function App() {
     }
   }, [game])
 
+  useEffect(() => {
+    syncRemoteHistory().catch(() => {})
+  }, [])
+
   const startGame = (names) => {
     const nextGame = newGame(names)
     setGame(nextGame)
     setUndo([])
+    setRedo([])
     save(STORAGE.game, nextGame)
     setScreen('game')
+  }
+
+  const finishGame = (finishedGame) => {
+    setGame(finishedGame)
+    setUndo([])
+    setRedo([])
+    setCell(null)
+    localStorage.removeItem(STORAGE.game)
+
+    const winnerNames = winners(finishedGame).map((index) => finishedGame.players[index])
+    const historyEntry = {
+      id: crypto.randomUUID(),
+      date: Date.now(),
+      endedEarly: finishedGame.ended === true,
+      servida: finishedGame.servidaWinner !== null,
+      winner: winnerNames.join(' y '),
+      winners: winnerNames,
+      players: finishedGame.players.map((name, index) => ({
+        name,
+        total: total(finishedGame.scores[index]),
+        generala: Boolean(finishedGame.scores[index].generala && !finishedGame.scores[index].generala.tachado),
+      })),
+    }
+    save(STORAGE.history, [historyEntry, ...load(STORAGE.history, [])])
+    setHistoryVersion((version) => version + 1)
+    const remoteConfig = readRemoteConfig()
+    if (remoteConfig?.enabled) saveRemoteHistoryEntry(remoteConfig, historyEntry).catch(() => {})
+    setScreen('over')
   }
 
   const score = (entry) => {
@@ -123,6 +200,7 @@ export default function App() {
 
     const nextGame = applyScore(game, cell.pIdx, cell.cat.id, entry)
     setUndo((states) => [...states, game])
+    setRedo([])
     setGame(nextGame)
     setCell(null)
 
@@ -131,31 +209,19 @@ export default function App() {
       return
     }
 
-    setUndo([])
-    localStorage.removeItem(STORAGE.game)
-    const winnerNames = winners(nextGame).map((index) => nextGame.players[index])
-    const historyEntry = {
-      date: Date.now(),
-      servida: nextGame.servidaWinner !== null,
-      winner: winnerNames.join(' y '),
-      winners: winnerNames,
-      players: nextGame.players.map((name, index) => ({
-        name,
-        total: total(nextGame.scores[index]),
-        generala: Boolean(nextGame.scores[index].generala && !nextGame.scores[index].generala.tachado),
-      })),
-    }
-    save(STORAGE.history, [historyEntry, ...load(STORAGE.history, [])])
-    setScreen('over')
+    finishGame(nextGame)
   }
 
   const abandon = () => {
     localStorage.removeItem(STORAGE.game)
     setGame(null)
     setUndo([])
+    setRedo([])
     setCell(null)
     setScreen('home')
   }
+
+  const finishEarly = () => finishGame(endGame(game))
 
   const doUndo = () => {
     const previous = undo.at(-1)
@@ -164,11 +230,25 @@ export default function App() {
     setGame(previous)
     save(STORAGE.game, previous)
     setUndo((states) => states.slice(0, -1))
+    setRedo((states) => [...states, game])
+    setCell(null)
+  }
+
+  const doRedo = () => {
+    const next = redo.at(-1)
+    if (!next) return
+
+    setGame(next)
+    save(STORAGE.game, next)
+    setUndo((states) => [...states, game])
+    setRedo((states) => states.slice(0, -1))
+    setCell(null)
   }
 
   const skip = () => {
     const nextGame = skipTurn(game)
     setUndo((states) => [...states, game])
+    setRedo([])
     setGame(nextGame)
     save(STORAGE.game, nextGame)
   }
@@ -180,11 +260,16 @@ export default function App() {
     dark,
     setDark,
     undo,
+    redo,
     doUndo,
+    doRedo,
     cell,
     setCell,
     score,
     abandon,
+    finishEarly,
+    historyVersion,
+    syncRemoteHistory,
     skip,
   }
 
@@ -196,6 +281,7 @@ export default function App() {
       {screen === 'over' && game && <Over {...props} />}
       {screen === 'history' && <History {...props} />}
       {screen === 'rules' && <Rules {...props} />}
+      {screen === 'settings' && <Settings {...props} />}
     </div>
   )
 }
@@ -284,6 +370,7 @@ function Home({ game, setScreen, dark, setDark }) {
         <div className="home-link-row">
           <button onClick={() => setScreen('history')}><HistoryIcon /> Historial</button>
           <button onClick={() => setScreen('rules')}><BookOpen /> Reglas</button>
+          <button onClick={() => setScreen('settings')}><SettingsIcon /> Ajustes</button>
         </div>
       </nav>
     </main>
@@ -369,7 +456,22 @@ function Setup({ setScreen, startGame, dark, setDark }) {
   )
 }
 
-function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon, skip, setScreen }) {
+function Game({
+  game,
+  dark,
+  setDark,
+  undo,
+  redo,
+  doUndo,
+  doRedo,
+  cell,
+  setCell,
+  score,
+  abandon,
+  finishEarly,
+  skip,
+  setScreen,
+}) {
   const current = currentPlayer(game)
   const [asking, setAsking] = useState(false)
   const [highlightedCell, setHighlightedCell] = useState(null)
@@ -385,7 +487,8 @@ function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon
         <div className="game-tools">
           <IconButton label="Ver reglas" onClick={() => setScreen('rules')}><CircleHelp /></IconButton>
           <IconButton label="Pasar turno" onClick={skip}><SkipForward /></IconButton>
-          <IconButton label="Deshacer" onClick={doUndo} disabled={undo.length === 0}><RotateCcw /></IconButton>
+          <IconButton label="Deshacer" onClick={doUndo} disabled={undo.length === 0}><Undo2 /></IconButton>
+          <IconButton label="Rehacer" onClick={doRedo} disabled={redo.length === 0}><Redo2 /></IconButton>
           <DarkToggle dark={dark} setDark={setDark} />
         </div>
       </header>
@@ -468,7 +571,8 @@ function Game({ game, dark, setDark, undo, doUndo, cell, setCell, score, abandon
 
       {asking ? (
         <Modal title="¿Salir de la partida?" onClose={() => setAsking(false)}>
-          <p className="modal-copy">La partida guardada se va a eliminar.</p>
+          <p className="modal-copy">Podés cerrar la partida con los puntos actuales o eliminarla.</p>
+          <button className={primary} onClick={finishEarly}><Trophy /> Terminar y guardar</button>
           <button className="button-base button-danger" onClick={abandon}>Salir y eliminar</button>
           <button className={secondary} onClick={() => setAsking(false)}>Seguir jugando</button>
         </Modal>
@@ -543,17 +647,23 @@ function Over({ game, setScreen, dark, setDark }) {
   const winnerIndexes = winners(game)
   const isTie = winnerIndexes.length > 1
   const isServida = game.servidaWinner !== null
+  const endedEarly = game.ended === true
   const winnerNames = winnerIndexes.map((index) => game.players[index])
   const ranked = game.players
     .map((name, index) => ({ name, total: total(game.scores[index]), index }))
-    .sort((a, b) => b.total - a.total || a.index - b.index)
+    .sort((a, b) => {
+      const aWon = winnerIndexes.includes(a.index)
+      const bWon = winnerIndexes.includes(b.index)
+      if (aWon !== bWon) return aWon ? -1 : 1
+      return b.total - a.total || a.index - b.index
+    })
 
   return (
     <main className="page-screen over-screen">
       <ScreenHeader title="Resultado" onBack={() => setScreen('home')} dark={dark} setDark={setDark} />
       <section className="page-content over-content">
         <div className="winner-symbol"><Trophy /></div>
-        <p className="eyebrow">{isServida ? 'Generala servida' : isTie ? 'Final empatado' : 'Fin de la partida'}</p>
+        <p className="eyebrow">{isServida ? 'Generala servida' : endedEarly ? 'Partida cerrada' : isTie ? 'Final empatado' : 'Fin de la partida'}</p>
         <h2>{isTie ? `Empate: ${winnerNames.join(' y ')}` : `Ganó ${winnerNames[0]}`}</h2>
         {isTie ? <p className="result-copy">La mesa decide una mano de desempate.</p> : null}
 
@@ -562,7 +672,11 @@ function Over({ game, setScreen, dark, setDark }) {
             <li key={player.index} className={winnerIndexes.includes(player.index) ? 'ranking-winner' : ''}>
               <span className="rank-number">{index + 1}</span>
               <strong>{player.name}</strong>
-              <span>{player.total} pts.</span>
+              {winnerIndexes.includes(player.index) ? (
+                <span className="winner-crown" aria-label="Ganador"><Crown /></span>
+              ) : (
+                <span>{player.total} pts.</span>
+              )}
             </li>
           ))}
         </ol>
@@ -576,12 +690,27 @@ function Over({ game, setScreen, dark, setDark }) {
   )
 }
 
-function History({ setScreen, dark, setDark }) {
+function History({ setScreen, dark, setDark, historyVersion, syncRemoteHistory }) {
   const [games, setGames] = useState(() => load(STORAGE.history, []))
+
+  useEffect(() => {
+    setGames(load(STORAGE.history, []))
+  }, [historyVersion])
+
+  useEffect(() => {
+    syncRemoteHistory().catch(() => {})
+  }, [])
+
   const remove = (index) => {
+    const removed = games[index]
     const remaining = games.filter((_, gameIndex) => gameIndex !== index)
     setGames(remaining)
     save(STORAGE.history, remaining)
+    if (removed.id) {
+      save(STORAGE.deleted, [...load(STORAGE.deleted, []), removed.id])
+      const remoteConfig = readRemoteConfig()
+      if (remoteConfig?.enabled) deleteRemoteHistoryEntry(remoteConfig, removed.id).catch(() => {})
+    }
   }
 
   const stats = {}
@@ -637,6 +766,7 @@ function History({ setScreen, dark, setDark }) {
                     <time dateTime={new Date(game.date).toISOString()}>
                       {new Date(game.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </time>
+                    {game.endedEarly ? <span className="history-status">Cierre manual</span> : null}
                     <IconButton label="Borrar partida" onClick={() => remove(index)}><Trash2 /></IconButton>
                   </div>
                   <div className="history-winner">
@@ -649,6 +779,126 @@ function History({ setScreen, dark, setDark }) {
             </ul>
           </>
         )}
+      </section>
+    </main>
+  )
+}
+
+function Settings({ setScreen, dark, setDark, syncRemoteHistory }) {
+  const stored = readRemoteConfig()
+  const [url, setUrl] = useState(stored?.url ?? '')
+  const [key, setKey] = useState(stored?.key ?? '')
+  const [enabled, setEnabled] = useState(stored?.enabled ?? true)
+  const [hasStoredConfig, setHasStoredConfig] = useState(Boolean(stored))
+  const [showKey, setShowKey] = useState(false)
+  const [status, setStatus] = useState({ type: 'idle', message: '' })
+
+  const config = { url, key, enabled }
+
+  const test = async () => {
+    setStatus({ type: 'loading', message: 'Probando conexión…' })
+    try {
+      await testRemoteConnection(config)
+      setStatus({ type: 'success', message: 'Conexión correcta.' })
+      return true
+    } catch (error) {
+      setStatus({ type: 'error', message: error.message })
+      return false
+    }
+  }
+
+  const storeAndSync = async () => {
+    setStatus({ type: 'loading', message: enabled ? 'Guardando y sincronizando…' : 'Guardando…' })
+    try {
+      const savedConfig = saveRemoteConfig(config)
+      setHasStoredConfig(true)
+      if (enabled) {
+        await testRemoteConnection(savedConfig)
+        await syncRemoteHistory(savedConfig)
+      }
+      setStatus({ type: 'success', message: enabled ? 'Ajustes guardados e historial sincronizado.' : 'Ajustes guardados.' })
+    } catch (error) {
+      setStatus({ type: 'error', message: error.message })
+    }
+  }
+
+  const remove = () => {
+    removeRemoteConfig()
+    setUrl('')
+    setKey('')
+    setEnabled(true)
+    setHasStoredConfig(false)
+    setStatus({ type: 'success', message: 'Credenciales eliminadas de este dispositivo.' })
+  }
+
+  const busy = status.type === 'loading'
+
+  return (
+    <main className="page-screen">
+      <ScreenHeader title="Ajustes" onBack={() => setScreen('home')} dark={dark} setDark={setDark} />
+      <section className="page-content settings-content">
+        <div className="section-heading">
+          <span className="section-icon"><Cloud /></span>
+          <div><p className="eyebrow">Almacenamiento remoto</p><h2>Supabase</h2></div>
+        </div>
+
+        <div className="security-notice">
+          <strong>Clave guardada sólo en este dispositivo</strong>
+          <p>Usá un proyecto dedicado a Generala. La clave secreta permite acceso administrativo a ese proyecto.</p>
+        </div>
+
+        <div className="settings-fields">
+          <label htmlFor="supabase-url">URL del proyecto</label>
+          <input
+            id="supabase-url"
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            placeholder="https://proyecto.supabase.co"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+          />
+
+          <label htmlFor="supabase-key">Clave secreta</label>
+          <div className="secret-input">
+            <input
+              id="supabase-key"
+              type={showKey ? 'text' : 'password'}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              placeholder="sb_secret_…"
+              value={key}
+              onChange={(event) => setKey(event.target.value)}
+            />
+            <IconButton label={showKey ? 'Ocultar clave' : 'Mostrar clave'} onClick={() => setShowKey((visible) => !visible)}>
+              {showKey ? <EyeOff /> : <Eye />}
+            </IconButton>
+          </div>
+        </div>
+
+        <label className="sync-toggle">
+          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          <span><strong>Sincronización activa</strong><small>Guarda resultados terminados y recupera el historial.</small></span>
+        </label>
+
+        {status.message ? (
+          <p className={`settings-status settings-status-${status.type}`} role="status">
+            {status.type === 'success' ? <CheckCircle2 /> : null}
+            {status.message}
+          </p>
+        ) : null}
+
+        <div className="settings-actions">
+          <button className={secondary} onClick={test} disabled={busy || !url.trim() || !key.trim()}>Probar conexión</button>
+          <button className={primary} onClick={storeAndSync} disabled={busy || !url.trim() || !key.trim()}>
+            <Cloud /> {enabled ? 'Guardar y sincronizar' : 'Guardar ajustes'}
+          </button>
+          {hasStoredConfig ? <button className="settings-remove" onClick={remove}>Eliminar credenciales</button> : null}
+        </div>
+
+        <p className="settings-table-note">Tabla requerida: <code>public.generala_games</code></p>
       </section>
     </main>
   )

@@ -47,7 +47,9 @@ export const skipTurn = (g) => ({ ...g, turn: nextTurn(g, currentPlayer(g)) })
 export const dobleUnlocked = (sc) => !!sc.generala && !sc.generala.tachado
 
 export const isOver = (g) =>
-  g.servidaWinner !== null || g.scores.every((s) => filled(s) === CATS.length)
+  g.ended === true || g.servidaWinner !== null || g.scores.every((s) => filled(s) === CATS.length)
+
+export const endGame = (g) => (isOver(g) ? g : { ...g, ended: true })
 
 export const winners = (g) => {
   if (g.servidaWinner !== null) return [g.servidaWinner]

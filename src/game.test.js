@@ -5,6 +5,7 @@ import {
   total,
   currentPlayer,
   dobleUnlocked,
+  endGame,
   isOver,
   winner,
   winners,
@@ -98,5 +99,12 @@ const complete = {
   scores: guarded.scores.map(() => Object.fromEntries(CATS.map((c) => [c.id, { pts: 0, tachado: true }]))),
 }
 assert.throws(() => applyScore(complete, 0, 'u1', { pts: 1 }), /terminó/)
+
+// a game can be closed early and keeps the scores entered so far
+const endedEarly = endGame(firstScore)
+assert.ok(isOver(endedEarly))
+assert.equal(total(endedEarly.scores[0]), 2)
+assert.deepEqual(winners(endedEarly), [0])
+assert.throws(() => applyScore(endedEarly, 1, 'u2', { pts: 2 }), /terminó/)
 
 console.log('ok')
