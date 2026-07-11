@@ -18,10 +18,19 @@ const merged = mergeHistory(local, remote)
 assert.deepEqual(merged.map(({ id }) => id), ['remote', 'local', 'shared'])
 assert.equal(merged.find(({ id }) => id === 'shared').source, 'remote')
 
-// planSync: upload only what remote lacks, delete tombstoned, exclude tombstoned from merge
+// planSync: upload only what remote lacks, replicate tombstones, exclude deleted games
 const plan = planSync(local, remote, ['remote'])
 assert.deepEqual(plan.toUpload.map(({ id }) => id), ['local'])
 assert.deepEqual(plan.toDelete, ['remote'])
+assert.deepEqual(plan.deletedIds, ['remote'])
 assert.deepEqual(plan.merged.map(({ id }) => id), ['local', 'shared'])
+
+// a remote tombstone removes a stale local copy and is not uploaded again
+const remoteTombstone = { id: 'shared', date: 50, deleted: true }
+const propagated = planSync(local, [remoteTombstone], [])
+assert.deepEqual(propagated.toUpload.map(({ id }) => id), ['local'])
+assert.deepEqual(propagated.toDelete, [])
+assert.deepEqual(propagated.deletedIds, ['shared'])
+assert.deepEqual(propagated.merged.map(({ id }) => id), ['local'])
 
 console.log('ok')

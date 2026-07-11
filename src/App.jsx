@@ -38,12 +38,12 @@ import {
   winners,
 } from './game'
 import {
-  deleteRemoteHistoryEntry,
   fetchRemoteHistory,
   planSync,
   readRemoteConfig,
   removeRemoteConfig,
   saveRemoteConfig,
+  saveRemoteDeletion,
   saveRemoteHistoryEntry,
   testRemoteConnection,
 } from './remote'
@@ -129,13 +129,14 @@ export default function App() {
     const localGames = ensureHistoryIds(load(STORAGE.history, []))
     save(STORAGE.history, localGames)
     const remoteGames = await fetchRemoteHistory(providedConfig)
-    const { toUpload, toDelete, merged } = planSync(localGames, remoteGames, load(STORAGE.deleted, []))
+    const { toUpload, toDelete, deletedIds, merged } = planSync(localGames, remoteGames, load(STORAGE.deleted, []))
     await Promise.all([
       ...toUpload.map((entry) => saveRemoteHistoryEntry(providedConfig, entry)),
-      ...toDelete.map((id) => deleteRemoteHistoryEntry(providedConfig, id)),
+      ...toDelete.map((id) => saveRemoteDeletion(providedConfig, id)),
     ])
 
     save(STORAGE.history, merged)
+    save(STORAGE.deleted, deletedIds)
     setHistoryVersion((version) => version + 1)
     return merged
   }
@@ -157,6 +158,18 @@ export default function App() {
 
   useEffect(() => {
     syncRemoteHistory().catch(() => {})
+
+    const syncWhenActive = () => {
+      if (document.visibilityState === 'visible') syncRemoteHistory().catch(() => {})
+    }
+    window.addEventListener('online', syncWhenActive)
+    window.addEventListener('focus', syncWhenActive)
+    document.addEventListener('visibilitychange', syncWhenActive)
+    return () => {
+      window.removeEventListener('online', syncWhenActive)
+      window.removeEventListener('focus', syncWhenActive)
+      document.removeEventListener('visibilitychange', syncWhenActive)
+    }
   }, [])
 
   const startGame = (names) => {
@@ -716,9 +729,14 @@ function History({ setScreen, dark, setDark, historyVersion, syncRemoteHistory }
     setGames(remaining)
     save(STORAGE.history, remaining)
     if (removed.id) {
-      save(STORAGE.deleted, [...load(STORAGE.deleted, []), removed.id])
+      save(STORAGE.deleted, [...new Set([...load(STORAGE.deleted, []), removed.id])])
       const remoteConfig = readRemoteConfig()
-      if (remoteConfig?.enabled) deleteRemoteHistoryEntry(remoteConfig, removed.id).catch(() => {})
+      if (remoteConfig?.enabled) {
+        setSyncState('loading')
+        saveRemoteDeletion(remoteConfig, removed.id)
+          .then(() => setSyncState('idle'))
+          .catch(() => setSyncState('error'))
+      }
     }
   }
 

@@ -72,10 +72,14 @@ export const saveRemoteHistoryEntry = (config, entry) =>
     body: JSON.stringify({ id: entry.id, payload: entry }),
   })
 
-export const deleteRemoteHistoryEntry = (config, id) =>
-  remoteRequest(config, `${TABLE}?id=eq.${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: { Prefer: 'return=minimal' },
+export const saveRemoteDeletion = (config, id) =>
+  remoteRequest(config, `${TABLE}?on_conflict=id`, {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      id,
+      payload: { id, deleted: true, date: Date.now() },
+    }),
   })
 
 export const mergeHistory = (localGames, remoteGames) => {
@@ -88,11 +92,14 @@ export const mergeHistory = (localGames, remoteGames) => {
 }
 
 export const planSync = (localGames, remoteGames, deletedIds = []) => {
-  const deleted = new Set(deletedIds)
+  const remoteDeleted = new Set(remoteGames.filter(({ deleted }) => deleted).map(({ id }) => id))
+  const deleted = new Set([...deletedIds, ...remoteDeleted])
   const remoteIds = new Set(remoteGames.map(({ id }) => id))
+  const activeRemoteGames = remoteGames.filter(({ deleted: isDeleted }) => !isDeleted)
   return {
     toUpload: localGames.filter(({ id }) => !remoteIds.has(id) && !deleted.has(id)),
-    toDelete: [...deleted].filter((id) => remoteIds.has(id)),
-    merged: mergeHistory(localGames, remoteGames).filter(({ id }) => !deleted.has(id)),
+    toDelete: [...deleted].filter((id) => !remoteDeleted.has(id)),
+    deletedIds: [...deleted],
+    merged: mergeHistory(localGames, activeRemoteGames).filter(({ id }) => !deleted.has(id)),
   }
 }
