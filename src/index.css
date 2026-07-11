@@ -301,6 +301,7 @@ button:focus-visible, input:focus-visible {
   font-weight: 700;
 }
 .dark .score-table .category-cell { background: #101a22; }
+.category-head-right, .category-cell-right, .total-label-right { display: none; }
 .category-cell > span, .category-cell > svg { display: inline-block; vertical-align: middle; }
 .category-cell > svg { margin-right: 9px; color: #167caf; }
 .category-initial { width: 22px; height: 22px; margin-right: 7px; border: 1px solid #9fb2bc; border-radius: 50%; text-align: center; line-height: 20px; color: #52646e; font-family: Georgia, serif; font-size: 13px; }
@@ -345,6 +346,46 @@ button:focus-visible, input:focus-visible {
 .score-table .total-row th, .score-table .total-row td { position: sticky; bottom: 0; z-index: 20; height: 53px; border-top: 2px solid #17242d; border-bottom: 0; background: #fff; font-size: 17px; font-weight: 850; }
 .score-table .total-row th { left: 0; z-index: 30; padding: 0 12px; text-align: left; }
 .dark .score-table .total-row th, .dark .score-table .total-row td { border-color: #dce3e6; background: #15212a; }
+
+@media (min-width: 700px) {
+  .score-table .category-head-right {
+    right: 0;
+    left: auto;
+    z-index: 30;
+    width: 48px;
+    min-width: 48px;
+    display: table-cell;
+    padding: 0;
+    border-left: 1px solid #bcd7e4;
+  }
+  .score-table .category-cell-right {
+    right: 0;
+    left: auto;
+    z-index: 15;
+    width: 48px;
+    min-width: 48px;
+    display: table-cell;
+    padding: 0;
+    border-left: 1px solid #dedbd3;
+    text-align: center;
+  }
+  .dark .score-table .category-head-right { border-left-color: #416272; }
+  .dark .score-table .category-cell-right { border-left-color: #30404a; }
+  .score-table .category-cell-right > svg,
+  .score-table .category-cell-right .category-initial { margin-right: 0; }
+  .score-table .total-row .total-label-right {
+    right: 0;
+    left: auto;
+    z-index: 30;
+    width: 48px;
+    min-width: 48px;
+    display: table-cell;
+    padding: 0;
+    border-left: 1px solid #dedbd3;
+    text-align: center;
+  }
+  .dark .score-table .total-row .total-label-right { border-left-color: #30404a; }
+}
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-end; justify-content: center; padding-top: 40px; background: rgb(10 18 23 / 58%); }
 .modal-sheet { width: min(100%, 560px); max-height: calc(100dvh - 40px); overflow: auto; border-radius: 8px 8px 0 0; padding: 20px 20px max(22px, calc(14px + env(safe-area-inset-bottom))); background: #fff; color: #17242d; }

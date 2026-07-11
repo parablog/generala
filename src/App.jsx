@@ -332,6 +332,12 @@ const Cross = () => (
   </span>
 )
 
+const CategoryMark = ({ cat }) => (
+  cat.face
+    ? <Die face={cat.face} />
+    : <span className="category-initial">{cat.id === 'doble' ? 'D' : cat.label[0]}</span>
+)
+
 const IconButton = ({ label, children, className = '', ...props }) => (
   <button className={`icon-button ${className}`} aria-label={label} title={label} {...props}>
     {children}
@@ -519,13 +525,14 @@ function Game({
                   <span>{player}</span>
                 </th>
               ))}
+              <th className="category-head category-head-right" aria-hidden="true" />
             </tr>
           </thead>
           <tbody>
             {CATS.map((cat) => (
               <tr key={cat.id}>
                 <th scope="row" className="category-cell" aria-label={cat.label} title={cat.label}>
-                  {cat.face ? <Die face={cat.face} /> : <span className="category-initial">{cat.id === 'doble' ? 'D' : cat.label[0]}</span>}
+                  <CategoryMark cat={cat} />
                   <span>{cat.label}</span>
                 </th>
                 {game.players.map((_, playerIndex) => {
@@ -564,11 +571,15 @@ function Game({
                     </td>
                   )
                 })}
+                <th className="category-cell category-cell-right" title={cat.label} aria-hidden="true">
+                  <CategoryMark cat={cat} />
+                </th>
               </tr>
             ))}
             <tr className="total-row">
               <th scope="row">Total</th>
               {game.scores.map((scores, index) => <td key={index}>{total(scores)}</td>)}
+              <th className="total-label-right" aria-hidden="true">Σ</th>
             </tr>
           </tbody>
         </table>
