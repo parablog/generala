@@ -844,7 +844,7 @@ function Settings({ setScreen, dark, setDark, syncRemoteHistory }) {
 
         <div className="security-notice">
           <strong>Clave guardada sólo en este dispositivo</strong>
-          <p>Usá un proyecto dedicado a Generala. La clave secreta permite acceso administrativo a ese proyecto.</p>
+          <p>Usá un proyecto dedicado a Generala. Cualquiera con la URL y esta clave puede ver y borrar el historial: compartilas sólo con tu casa.</p>
         </div>
 
         <div className="settings-fields">
@@ -860,7 +860,7 @@ function Settings({ setScreen, dark, setDark, syncRemoteHistory }) {
             onChange={(event) => setUrl(event.target.value)}
           />
 
-          <label htmlFor="supabase-key">Clave secreta</label>
+          <label htmlFor="supabase-key">Clave publicable</label>
           <div className="secret-input">
             <input
               id="supabase-key"
@@ -868,7 +868,7 @@ function Settings({ setScreen, dark, setDark, syncRemoteHistory }) {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck="false"
-              placeholder="sb_secret_…"
+              placeholder="sb_publishable_…"
               value={key}
               onChange={(event) => setKey(event.target.value)}
             />

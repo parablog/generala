@@ -32,7 +32,7 @@ export const validateRemoteConfig = ({ url, key }) => {
   if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost') {
     throw new Error('La URL de Supabase debe usar HTTPS')
   }
-  if (!key.trim()) throw new Error('Falta la clave secreta')
+  if (!key.trim()) throw new Error('Falta la clave del proyecto')
 }
 
 const remoteRequest = async (config, path, options = {}) => {
