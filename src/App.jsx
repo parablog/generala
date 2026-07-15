@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   Cloud,
@@ -172,8 +173,12 @@ export default function App() {
     }
   }, [])
 
-  const startGame = (names) => {
-    const nextGame = newGame(names)
+  const startGame = (entries) => {
+    // Game displays nicknames; `names` keeps the real identities for history/stats.
+    const nextGame = {
+      ...newGame(entries.map(({ nick, name }) => nick || name)),
+      names: entries.map(({ name }) => name),
+    }
     setGame(nextGame)
     setUndo([])
     setRedo([])
@@ -188,7 +193,8 @@ export default function App() {
     setCell(null)
     localStorage.removeItem(STORAGE.game)
 
-    const winnerNames = winners(finishedGame).map((index) => finishedGame.players[index])
+    const realNames = finishedGame.names ?? finishedGame.players
+    const winnerNames = winners(finishedGame).map((index) => realNames[index])
     const historyEntry = {
       id: crypto.randomUUID(),
       date: Date.now(),
@@ -197,7 +203,7 @@ export default function App() {
       winner: winnerNames.join(' y '),
       winners: winnerNames,
       players: finishedGame.players.map((name, index) => ({
-        name,
+        name: realNames[index],
         total: total(finishedGame.scores[index]),
         generala: Boolean(finishedGame.scores[index].generala && !finishedGame.scores[index].generala.tachado),
       })),
@@ -398,20 +404,28 @@ function Home({ game, setScreen, dark, setDark }) {
 }
 
 function Setup({ setScreen, startGame, dark, setDark }) {
-  const [names, setNames] = useState([])
+  const [players, setPlayers] = useState([])
   const [draft, setDraft] = useState('')
+  const [nick, setNick] = useState('')
   const [error, setError] = useState('')
+  const [showKnown, setShowKnown] = useState(false)
+
+  const sameName = (a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }) === 0
+  const known = [...new Set(load(STORAGE.history, []).flatMap((game) => game.players.map(({ name }) => name)))]
+  const available = known.filter((name) => !players.some((current) => sameName(current.name, name)))
+  const match = known.find((name) => sameName(name, draft.trim()))
 
   const add = () => {
-    const name = draft.trim()
-    if (!name || names.length >= 8) return
-    if (names.some((current) => current.localeCompare(name, 'es', { sensitivity: 'base' }) === 0)) {
+    const name = match ?? draft.trim()
+    if (!name || players.length >= 8) return
+    if (players.some((current) => sameName(current.name, name))) {
       setError('Ese nombre ya está en la mesa.')
       return
     }
 
-    setNames((current) => [...current, name])
+    setPlayers((current) => [...current, { name, nick: nick.trim() || name }])
     setDraft('')
+    setNick('')
     setError('')
   }
 
@@ -441,34 +455,68 @@ function Setup({ setScreen, startGame, dark, setDark }) {
               onChange={(event) => { setDraft(event.target.value); setError('') }}
               autoFocus
             />
-            <IconButton label="Agregar jugador" type="submit" disabled={!draft.trim() || names.length >= 8}>
+            {available.length > 0 ? (
+              <IconButton
+                label="Elegir jugador existente"
+                type="button"
+                onClick={() => setShowKnown((visible) => !visible)}
+              >
+                <ChevronDown />
+              </IconButton>
+            ) : null}
+            <IconButton label="Agregar jugador" type="submit" disabled={!draft.trim() || players.length >= 8}>
               <Plus />
             </IconButton>
           </div>
+          {showKnown ? (
+            <ul className="known-list">
+              {available.map((name) => (
+                <li key={name}>
+                  <button type="button" onClick={() => { setDraft(name); setShowKnown(false); setError('') }}>
+                    {name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {match ? (
+            <div className="nick-row">
+              <input
+                id="player-nick"
+                placeholder={`Apodo para ${match} (opcional)`}
+                maxLength={20}
+                enterKeyHint="done"
+                autoCapitalize="words"
+                autoComplete="off"
+                value={nick}
+                onChange={(event) => setNick(event.target.value)}
+              />
+            </div>
+          ) : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
         </form>
 
         <div className="player-list-heading">
           <span>Orden de juego</span>
-          <span>{names.length}/8</span>
+          <span>{players.length}/8</span>
         </div>
         <ol className="player-list">
-          {names.map((name, index) => (
-            <li key={name}>
+          {players.map((player, index) => (
+            <li key={player.name}>
               <span className="player-number">{index + 1}</span>
-              <span>{name}</span>
+              <span>{player.nick !== player.name ? `${player.name} «${player.nick}»` : player.name}</span>
               <IconButton
-                label={`Quitar a ${name}`}
-                onClick={() => setNames((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                label={`Quitar a ${player.name}`}
+                onClick={() => setPlayers((current) => current.filter((_, itemIndex) => itemIndex !== index))}
               >
                 <X />
               </IconButton>
             </li>
           ))}
-          {names.length === 0 ? <li className="empty-player-list">Sumá entre 2 y 8 jugadores</li> : null}
+          {players.length === 0 ? <li className="empty-player-list">Sumá entre 2 y 8 jugadores</li> : null}
         </ol>
 
-        <button className={`${primary} start-button`} disabled={names.length < 2} onClick={() => startGame(names)}>
+        <button className={`${primary} start-button`} disabled={players.length < 2} onClick={() => startGame(players)}>
           Empezar partida <ChevronRight />
         </button>
       </section>
@@ -521,7 +569,7 @@ function Game({
             <tr>
               <th className="category-head"><span>Juego</span></th>
               {game.players.map((player, index) => (
-                <th key={player} className={index === current ? 'current-column player-head' : 'player-head'}>
+                <th key={index} className={index === current ? 'current-column player-head' : 'player-head'}>
                   <span>{player}</span>
                 </th>
               ))}
@@ -762,7 +810,7 @@ function History({ setScreen, dark, setDark, historyVersion, syncRemoteHistory }
       if (gameWinners.includes(player.name)) stat.wins += 1
     }
   }
-  const board = Object.entries(stats).sort((a, b) => b[1].wins - a[1].wins || b[1].points - a[1].points)
+  const board = Object.entries(stats).sort((a, b) => b[1].points - a[1].points || b[1].wins - a[1].wins)
 
   return (
     <main className="page-screen">
@@ -797,13 +845,14 @@ function History({ setScreen, dark, setDark, historyVersion, syncRemoteHistory }
             </div>
             <div className="stats-table-wrap">
               <table className="stats-table">
-                <thead><tr><th>Jugador</th><th>PG</th><th>Prom.</th><th>Gen.</th></tr></thead>
+                <thead><tr><th>Jugador</th><th>PJ</th><th>PG</th><th>Pts.</th><th>Gen.</th></tr></thead>
                 <tbody>
                   {board.map(([name, stat]) => (
                     <tr key={name}>
                       <th scope="row">{name}</th>
+                      <td>{stat.games}</td>
                       <td>{stat.wins}</td>
-                      <td>{Math.round(stat.points / stat.games)}</td>
+                      <td>{stat.points}</td>
                       <td>{stat.generalas}</td>
                     </tr>
                   ))}
