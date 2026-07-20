@@ -696,18 +696,18 @@ function ScoreSheet({ cell, onClose, onScore, playerName }) {
               { pts: count * cat.face },
               count,
             ))
-          : cat.servidaGana
-            ? [
-                option('Generala · 50', { pts: 50 }),
-                option('Servida · gana la partida', { pts: 50, servida: true }, 'servida', true),
-              ]
-            : cat.servida
+          : cell.locked
+            ? []
+            : cat.servidaGana
               ? [
-                  option(`Armada · ${cat.pts}`, { pts: cat.pts }),
-                  option(`Servida · ${cat.servida}`, { pts: cat.servida, servida: true }, 'servida', true),
+                  option(`${cat.label} · ${cat.pts}`, { pts: cat.pts }),
+                  option('Servida · gana la partida', { pts: cat.pts, servida: true }, 'servida', true),
                 ]
-              : cell.locked
-                ? []
+              : cat.servida
+                ? [
+                    option(`Armada · ${cat.pts}`, { pts: cat.pts }),
+                    option(`Servida · ${cat.servida}`, { pts: cat.servida, servida: true }, 'servida', true),
+                  ]
                 : [option(`${cat.label} · ${cat.pts}`, { pts: cat.pts })]}
         {option('Tachar categoría', { pts: 0, tachado: true })}
       </div>
@@ -1039,7 +1039,7 @@ function Rules({ setScreen, dark, setDark, game }) {
         </section>
         <section className="rule-section rule-highlight">
           <span className="rule-number"><Sun /></span>
-          <div><h3>Servida</h3><p>Escalera, Full o Póker en el primer tiro suman 5 puntos extra. Una Generala servida gana la partida en el acto.</p></div>
+          <div><h3>Servida</h3><p>Escalera, Full o Póker en el primer tiro suman 5 puntos extra. Una Generala servida gana la partida en el acto; la Generala Doble servida también.</p></div>
         </section>
         <section className="rule-section">
           <span className="rule-number">04</span>

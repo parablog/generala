@@ -43,6 +43,15 @@ assert.equal(h.servidaWinner, 1)
 assert.ok(isOver(h))
 assert.equal(winner(h), 1)
 
+// doble servida (after a scored generala) = instant win too
+let ds = newGame(['Ana', 'Beto'])
+ds = applyScore(ds, 0, 'generala', { pts: 50 })
+ds = applyScore(ds, 1, 'u1', { pts: 3 })
+ds = applyScore(ds, 0, 'doble', { pts: 100, servida: true })
+assert.equal(ds.servidaWinner, 0)
+assert.ok(isOver(ds))
+assert.equal(winner(ds), 0)
+
 // normal end: all cells filled, highest total wins
 let f = newGame(['Ana', 'Beto'])
 for (const c of CATS) {

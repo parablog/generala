@@ -10,7 +10,7 @@ export const CATS = [
   { id: 'full', label: 'Full', pts: 30, servida: 35 },
   { id: 'poker', label: 'Póker', pts: 40, servida: 45 },
   { id: 'generala', label: 'Generala', pts: 50, servidaGana: true },
-  { id: 'doble', label: 'G. Doble', pts: 100 },
+  { id: 'doble', label: 'G. Doble', pts: 100, servidaGana: true },
 ]
 
 // scores: one object per player, catId -> { pts, servida?, tachado? }
@@ -92,7 +92,7 @@ export const applyScore = (g, pIdx, catId, entry) => {
     ...g,
     scores: g.scores.map((s, i) => (i === pIdx ? { ...s, [catId]: entry } : s)),
     servidaWinner:
-      catId === 'generala' && entry.servida && !entry.tachado ? pIdx : g.servidaWinner,
+      cat.servidaGana && entry.servida && !entry.tachado ? pIdx : g.servidaWinner,
   }
   return { ...g2, turn: nextTurn(g2, pIdx) }
 }
